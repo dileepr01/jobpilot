@@ -142,13 +142,13 @@ set search_path = ''
 as $$
   select
     j.id,
-    greatest(-1, least(1, 1 - (j.embedding <=> p.resume_embedding)))::real as semantic_similarity
+    greatest(-1, least(1, 1 - (j.embedding OPERATOR(extensions.<=>) p.resume_embedding)))::real as semantic_similarity
   from public.profiles p
   join public.jobs j on j.embedding is not null
   where p.user_id = p_user_id
     and p.resume_embedding is not null
     and coalesce(j.posted_at, j.first_seen_at) >= p_since
-  order by j.embedding <=> p.resume_embedding
+  order by j.embedding OPERATOR(extensions.<=>) p.resume_embedding
   limit least(greatest(p_limit, 1), 500);
 $$;
 
