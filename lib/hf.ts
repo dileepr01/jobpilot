@@ -64,7 +64,7 @@ export async function extractResumeIntelligence(text: string): Promise<ParsedRes
   const fallback = heuristicResumeIntelligence(text)
   return generateJson<ParsedResume>(
     'You extract factual resume information. Return only valid JSON and never invent details.',
-    `Return this JSON shape: {"name":"","summary":"","skills":[],"titles":[],"yearsExperience":0,"education":[],"locations":[]}\n\nResume:\n${text.slice(0, 18_000)}`,
+    `Return this JSON shape: {"name":"","summary":"","skills":[],"titles":[],"yearsExperience":0,"education":[],"locations":[],"noticePeriod":""}\n\nResume:\n${text.slice(0, 18_000)}`,
     fallback
   )
 }
@@ -96,12 +96,16 @@ function heuristicResumeIntelligence(text: string): ParsedResume {
   const commonSkills = ['Power BI', 'Microsoft Fabric', 'SQL', 'Python', 'Azure', 'AWS', 'Tableau', 'Java', 'JavaScript', 'TypeScript', 'React', 'Next.js', 'Supabase', 'PostgreSQL', 'Docker', 'Kubernetes', 'Terraform']
   const skills = commonSkills.filter((skill) => new RegExp(skill.replace('.', '\\.'), 'i').test(text))
   const years = [...text.matchAll(/(\d{1,2})\+?\s+years?/gi)].map((match) => Number(match[1])).filter((value) => value < 50)
+  const noticePeriod = text.match(
+    /\bnotice\s*period\b\s*(?:is|:|-)?\s*(immediate(?:ly)?|\d{1,3}\s*(?:days?|months?))/i
+  )?.[1]
   return {
     skills,
     titles: [],
     education: [],
     locations: [],
     yearsExperience: years.length ? Math.max(...years) : undefined,
-    summary: text.slice(0, 500)
+    summary: text.slice(0, 500),
+    noticePeriod
   }
 }

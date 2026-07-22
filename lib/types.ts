@@ -17,6 +17,7 @@ export interface ParsedResume {
   yearsExperience?: number
   education: string[]
   locations: string[]
+  noticePeriod?: string
 }
 
 export interface JobRecord {
