@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: 15 23 42;
+  --muted: 100 116 139;
+  --panel: 255 255 255;
+  --brand: 79 70 229;
+  --brand-soft: 238 242 255;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  min-height: 100vh;
+  color: rgb(var(--ink));
+  background:
+    radial-gradient(circle at 10% 0%, rgba(129, 140, 248, .16), transparent 28%),
+    radial-gradient(circle at 100% 10%, rgba(45, 212, 191, .12), transparent 24%),
+    #f8fafc;
+}
+
+button, input, textarea, select { font: inherit; }
+
+@layer components {
+  .card { @apply rounded-3xl border border-slate-200/80 bg-white shadow-card; }
+  .btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50; }
+  .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100; }
+  .label { @apply mb-1.5 block text-sm font-semibold text-slate-700; }
+}

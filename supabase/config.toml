@@ -1,0 +1,4 @@
+project_id = "jobpilot"
+
+[functions.send-digest]
+verify_jwt = false
