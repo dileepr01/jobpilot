@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { scoreJob } from '@/lib/score'
-import type { JobPreferences, JobRecord } from '@/lib/types'
+import { scoreJob } from '../lib/score'
+import type { JobPreferences, JobRecord } from '../lib/types'
 
 const job: JobRecord = {
   id: '1',
