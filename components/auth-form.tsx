@@ -46,33 +46,6 @@ export function AuthForm() {
     router.refresh()
   }
 
-  async function googleSignIn() {
-    setLoading(true)
-    setMessage('')
-
-    const supabase = createClient()
-
-    const next =
-      safeNextPath(searchParams.get('next')) ||
-      '/dashboard'
-
-    const redirectTo =
-      `${window.location.origin}/auth/callback` +
-      `?next=${encodeURIComponent(next)}`
-
-    const { error } =
-      await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo
-        }
-      })
-
-    if (error) {
-      setMessage(error.message)
-      setLoading(false)
-    }
-  }
 
   return (
     <div className="card w-full max-w-md p-7 sm:p-9">
@@ -82,13 +55,6 @@ export function AuthForm() {
         <p className="mt-2 text-sm leading-6 text-slate-500">Your resume and application drafts stay in your Supabase project.</p>
       </div>
 
-      <button type="button" onClick={googleSignIn} disabled={loading} className="btn-secondary w-full">
-        Continue with Google
-      </button>
-
-      <div className="my-6 flex items-center gap-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-        <span className="h-px flex-1 bg-slate-200" />or<span className="h-px flex-1 bg-slate-200" />
-      </div>
 
       <form onSubmit={submit} className="space-y-4">
         <div>
