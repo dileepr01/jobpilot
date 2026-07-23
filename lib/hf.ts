@@ -22,40 +22,112 @@ function flattenEmbedding(result: unknown): number[] {
   throw new Error('Unsupported embedding shape')
 }
 
-export async function embedText(text: string) {
-  const env = getServerEnv()
-  await limiter.wait()
-  const result = await withRetry(() => client().featureExtraction({
-    model: env.HF_EMBEDDING_MODEL,
-    provider: env.HF_PROVIDER as never,
-    inputs: text.slice(0, 12_000)
-  }))
-  const vector = flattenEmbedding(result)
-  if (vector.length !== 384) throw new Error(`Expected a 384-dimension embedding, received ${vector.length}`)
-  return vector
+function fallbackEmbedding(text: string): number[] {
+  const vector = new Array<number>(384).fill(0)
+
+  const tokens =
+    text.toLowerCase().match(/[a-z0-9][a-z0-9+#.-]{1,}/g) ?? []
+
+  for (const token of tokens) {
+    let hash = 2166136261
+
+    for (let index = 0; index < token.length; index += 1) {
+      hash ^= token.charCodeAt(index)
+      hash = Math.imul(hash, 16777619)
+    }
+
+    const unsignedHash = hash >>> 0
+    const position = unsignedHash % 384
+    const direction = ((unsignedHash >>> 9) & 1) === 0 ? 1 : -1
+
+    vector[position] += direction
+  }
+
+  const norm =
+    Math.sqrt(
+      vector.reduce((sum, value) => sum + value * value, 0)
+    ) || 1
+
+  return vector.map((value) => value / norm)
 }
 
-async function generateJson<T>(system: string, user: string, fallback: T): Promise<T> {
+export async function embedText(text: string) {
   const env = getServerEnv()
-  await limiter.wait()
-  const result = await withRetry(() => client().chatCompletion({
-    model: env.HF_TEXT_MODEL,
-    provider: env.HF_PROVIDER as never,
-    temperature: 0.2,
-    max_tokens: 1400,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user }
-    ]
-  }))
 
-  const content = result.choices?.[0]?.message?.content
-  const text = typeof content === 'string' ? content : ''
-  const match = text.match(/\{[\s\S]*\}/)
-  if (!match) return fallback
   try {
-    return JSON.parse(match[0]) as T
-  } catch {
+    await limiter.wait()
+
+    const result = await withRetry(() =>
+      client().featureExtraction({
+        model: env.HF_EMBEDDING_MODEL,
+        provider: env.HF_EMBEDDING_PROVIDER as never,
+        inputs: text.slice(0, 12_000)
+      })
+    )
+
+    const vector = flattenEmbedding(result)
+
+    if (vector.length !== 384) {
+      throw new Error(
+        `Expected a 384-dimension embedding, received ${vector.length}`
+      )
+    }
+
+    return vector
+  } catch (error) {
+    console.error(
+      'Hugging Face embedding failed; using deterministic fallback.',
+      error
+    )
+
+    return fallbackEmbedding(text)
+  }
+}
+
+async function generateJson<T>(
+  system: string,
+  user: string,
+  fallback: T
+): Promise<T> {
+  const env = getServerEnv()
+
+  try {
+    await limiter.wait()
+
+    const result = await withRetry(() =>
+      client().chatCompletion({
+        model: env.HF_TEXT_MODEL,
+        provider: env.HF_TEXT_PROVIDER as never,
+        temperature: 0.2,
+        max_tokens: 1400,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user }
+        ]
+      })
+    )
+
+    const content = result.choices?.[0]?.message?.content
+    const responseText =
+      typeof content === 'string' ? content : ''
+
+    const match = responseText.match(/\{[\s\S]*\}/)
+
+    if (!match) {
+      return fallback
+    }
+
+    try {
+      return JSON.parse(match[0]) as T
+    } catch {
+      return fallback
+    }
+  } catch (error) {
+    console.error(
+      'Hugging Face text generation failed; using local fallback.',
+      error
+    )
+
     return fallback
   }
 }
@@ -92,20 +164,108 @@ export async function generateProfileSuggestions(input: { resumeText: string; re
   )
 }
 
-function heuristicResumeIntelligence(text: string): ParsedResume {
-  const commonSkills = ['Power BI', 'Microsoft Fabric', 'SQL', 'Python', 'Azure', 'AWS', 'Tableau', 'Java', 'JavaScript', 'TypeScript', 'React', 'Next.js', 'Supabase', 'PostgreSQL', 'Docker', 'Kubernetes', 'Terraform']
-  const skills = commonSkills.filter((skill) => new RegExp(skill.replace('.', '\\.'), 'i').test(text))
-  const years = [...text.matchAll(/(\d{1,2})\+?\s+years?/gi)].map((match) => Number(match[1])).filter((value) => value < 50)
+function heuristicResumeIntelligence(
+  text: string
+): ParsedResume {
+  const escapeRegex = (value: string) =>
+    value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+  const commonSkills = [
+    'Power BI',
+    'Microsoft Fabric',
+    'SQL',
+    'Python',
+    'Azure',
+    'AWS',
+    'Tableau',
+    'Java',
+    'JavaScript',
+    'TypeScript',
+    'React',
+    'Next.js',
+    'Supabase',
+    'PostgreSQL',
+    'Docker',
+    'Kubernetes',
+    'Terraform'
+  ]
+
+  const commonTitles = [
+    'Senior Software Engineer',
+    'Power BI Administrator',
+    'Power BI Admin',
+    'Fabric Administrator',
+    'Fabric Admin',
+    'BI Platform Administrator',
+    'BI Platform Admin',
+    'BI Platform Engineer',
+    'Power BI Developer',
+    'Business Intelligence Developer',
+    'Data Engineer'
+  ]
+
+  const commonLocations = [
+    'Hyderabad',
+    'Bengaluru',
+    'Bangalore',
+    'Chennai',
+    'Pune',
+    'Mumbai',
+    'Noida',
+    'Gurugram',
+    'Gurgaon',
+    'Delhi',
+    'Kolkata'
+  ]
+
+  const skills = commonSkills.filter((skill) =>
+    new RegExp(escapeRegex(skill), 'i').test(text)
+  )
+
+  const titles = commonTitles.filter((title) =>
+    new RegExp(escapeRegex(title), 'i').test(text)
+  )
+
+  const detectedLocations = commonLocations
+    .filter((location) =>
+      new RegExp(`\\b${escapeRegex(location)}\\b`, 'i').test(text)
+    )
+    .map((location) =>
+      location === 'Bangalore'
+        ? 'Bengaluru'
+        : location === 'Gurgaon'
+          ? 'Gurugram'
+          : location
+    )
+
+  const locations = Array.from(new Set(detectedLocations))
+
+  const name = text
+    .slice(0, 180)
+    .match(
+      /^([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){1,3})\b/
+    )?.[1]
+
+  const years = [
+    ...text.matchAll(/(\d{1,2})\+?\s+years?/gi)
+  ]
+    .map((match) => Number(match[1]))
+    .filter((value) => value < 50)
+
   const noticePeriod = text.match(
     /\bnotice\s*period\b\s*(?:is|:|-)?\s*(immediate(?:ly)?|\d{1,3}\s*(?:days?|months?))/i
   )?.[1]
+
   return {
+    name,
     skills,
-    titles: [],
+    titles,
     education: [],
-    locations: [],
-    yearsExperience: years.length ? Math.max(...years) : undefined,
+    locations,
+    yearsExperience:
+      years.length > 0 ? Math.max(...years) : undefined,
     summary: text.slice(0, 500),
     noticePeriod
   }
 }
+
