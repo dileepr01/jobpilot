@@ -34,6 +34,8 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
     cover_letter: kit.coverLetter,
     resume_tweaks: kit.resumeTweaks,
     screening_answers: kit.screeningAnswers,
+    tailored_resume: kit.tailoredResume,
+    ats_report: kit.atsReport,
     status: 'reviewed'
   }).eq('id', params.id).eq('user_id', user.id)
   if (error) return NextResponse.json({ error: error.message }, { status: 400 })

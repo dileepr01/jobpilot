@@ -5,7 +5,17 @@ import { createClient } from '@/lib/supabase/server'
 const patchSchema = z.object({
   status: z.enum(['new', 'reviewed', 'applied', 'interview', 'offer', 'rejected']).optional(),
   cover_letter: z.string().max(20_000).optional(),
-  notes: z.string().max(10_000).optional()
+  notes: z.string().max(10_000).optional(),
+  tailored_resume: z.object({
+    template: z.literal('modern-ats'),
+    content: z.string().min(1).max(60_000)
+  }).optional(),
+  ats_report: z.object({
+    score: z.number().min(0).max(100),
+    matchedKeywords: z.array(z.string()).max(100),
+    missingKeywords: z.array(z.string()).max(100),
+    warnings: z.array(z.string()).max(50)
+  }).optional()
 })
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {

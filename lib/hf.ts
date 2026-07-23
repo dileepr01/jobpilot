@@ -120,7 +120,8 @@ export async function embedText(text: string) {
 async function generateJson<T>(
   system: string,
   user: string,
-  fallback: T
+  fallback: T,
+  maxTokens = 1400
 ): Promise<T> {
   const env = getServerEnv()
 
@@ -134,7 +135,7 @@ async function generateJson<T>(
             model: env.HF_TEXT_MODEL,
             provider: env.HF_TEXT_PROVIDER as never,
             temperature: 0.2,
-            max_tokens: 1400,
+            max_tokens: maxTokens,
             messages: [
               { role: 'system', content: system },
               { role: 'user', content: user }
@@ -180,18 +181,105 @@ export async function extractResumeIntelligence(text: string): Promise<ParsedRes
   )
 }
 
-export async function generateApplicationKit(input: { resumeText: string; jobTitle: string; company: string; jobDescription: string }): Promise<ApplicationKit> {
+export async function generateApplicationKit(input: {
+  resumeText: string
+  jobTitle: string
+  company: string
+  jobDescription: string
+}): Promise<ApplicationKit> {
   const fallback: ApplicationKit = {
-    whyFit: ['Relevant experience aligns with the role requirements.', 'Transferable skills match the job description.', 'The resume shows evidence of ownership and delivery.'],
-    coverLetter: `Dear Hiring Team,\n\nI am interested in the ${input.jobTitle} role at ${input.company}. My background aligns with the position's core responsibilities, and I would welcome the opportunity to discuss how I can contribute.\n\nSincerely,`,
+    whyFit: [
+      'Relevant experience aligns with the role requirements.',
+      'Transferable skills match the job description.',
+      'The resume shows evidence of ownership and delivery.'
+    ],
+    coverLetter: `Dear Hiring Team,
+
+I am interested in the ${input.jobTitle} role at ${input.company}. My background aligns with the position's core responsibilities, and I would welcome the opportunity to discuss how I can contribute.
+
+Sincerely,`,
     resumeTweaks: [],
-    screeningAnswers: []
+    screeningAnswers: [],
+    tailoredResume: {
+      template: 'modern-ats',
+      content: input.resumeText
+    },
+    atsReport: {
+      score: 60,
+      matchedKeywords: [],
+      missingKeywords: [],
+      warnings: [
+        'Review every statement before applying.'
+      ]
+    }
   }
 
   return generateJson<ApplicationKit>(
-    'You are a truthful job-application writing assistant. Use only facts supported by the resume. Return only valid JSON. Do not claim tools, achievements, employers, degrees, or years not present in the resume.',
-    `Create an application kit with this exact JSON shape: {"whyFit":["three concise bullets"],"coverLetter":"220-320 word draft","resumeTweaks":["missing or under-emphasized keywords, never fabricated experience"],"screeningAnswers":[{"question":"Why are you interested in this role?","answer":""},{"question":"Why are you a strong fit?","answer":""},{"question":"What is your notice period?","answer":"Use resume/preferences only; otherwise say to edit manually"}]}\n\nRESUME:\n${input.resumeText.slice(0, 14_000)}\n\nJOB: ${input.jobTitle} at ${input.company}\n${input.jobDescription.slice(0, 12_000)}`,
-    fallback
+    `You are a truthful ATS resume editor.
+
+Use only facts explicitly supported by the original resume.
+Never invent employers, dates, qualifications, tools,
+certifications, achievements, responsibilities, metrics,
+or years of experience.
+
+Create a modern ATS-safe resume:
+- single column
+- reverse chronological experience
+- standard section headings
+- concise achievement-oriented bullets
+- no tables, icons, graphics, sidebars, or text boxes
+- include job keywords naturally only when supported
+- preserve important career history
+- do not include a photo or personal demographic details
+
+Return only valid JSON.`,
+    `Return this exact JSON structure:
+
+{
+  "whyFit": ["three factual concise bullets"],
+  "coverLetter": "220-320 word factual draft",
+  "resumeTweaks": ["truthful improvements"],
+  "screeningAnswers": [
+    {
+      "question": "Why are you interested in this role?",
+      "answer": ""
+    },
+    {
+      "question": "Why are you a strong fit?",
+      "answer": ""
+    },
+    {
+      "question": "What is your notice period?",
+      "answer": ""
+    }
+  ],
+  "tailoredResume": {
+    "template": "modern-ats",
+    "content": "Complete ATS resume in plain text"
+  },
+  "atsReport": {
+    "score": 0,
+    "matchedKeywords": [],
+    "missingKeywords": [],
+    "warnings": []
+  }
+}
+
+ATS score must be between 0 and 100.
+
+Missing keywords must not be inserted as candidate skills
+unless the original resume supports them.
+
+ORIGINAL RESUME:
+${input.resumeText.slice(0, 18_000)}
+
+TARGET JOB:
+${input.jobTitle} at ${input.company}
+
+JOB DESCRIPTION:
+${input.jobDescription.slice(0, 14_000)}`,
+    fallback,
+    3200
   )
 }
 

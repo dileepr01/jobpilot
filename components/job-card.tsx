@@ -2,7 +2,12 @@
 
 import { useState } from 'react'
 import { MatchScore } from '@/components/match-score'
-import type { MatchStatus, ScoreBreakdown } from '@/lib/types'
+import type {
+  AtsReport,
+  MatchStatus,
+  ScoreBreakdown,
+  TailoredResume
+} from '@/lib/types'
 
 export interface MatchView {
   id: string
@@ -12,7 +17,12 @@ export interface MatchView {
   why_fit: string[]
   cover_letter: string | null
   resume_tweaks: string[]
-  screening_answers: Array<{ question: string; answer: string }>
+  screening_answers: Array<{
+    question: string
+    answer: string
+  }>
+  tailored_resume: TailoredResume | null
+  ats_report: AtsReport | null
   jobs: {
     title: string
     company: string
@@ -54,7 +64,16 @@ export function JobCard({ initial }: { initial: MatchView }) {
     const data = await response.json()
     setBusy(false)
     if (!response.ok) return setMessage(data.error || 'Generation failed')
-    setMatch((current) => ({ ...current, why_fit: data.kit.whyFit, cover_letter: data.kit.coverLetter, resume_tweaks: data.kit.resumeTweaks, screening_answers: data.kit.screeningAnswers, status: 'reviewed' }))
+    setMatch((current) => ({
+      ...current,
+      why_fit: data.kit.whyFit,
+      cover_letter: data.kit.coverLetter,
+      resume_tweaks: data.kit.resumeTweaks,
+      screening_answers: data.kit.screeningAnswers,
+      tailored_resume: data.kit.tailoredResume,
+      ats_report: data.kit.atsReport,
+      status: 'reviewed'
+    }))
   }
 
   const breakdown = match.score_breakdown || {} as ScoreBreakdown
@@ -82,13 +101,100 @@ export function JobCard({ initial }: { initial: MatchView }) {
 
       <div className="mt-6 flex flex-wrap gap-2">
         <a className="btn-primary" href={match.jobs.external_url} target="_blank" rel="noreferrer" onClick={() => void patch({ status: 'reviewed' })}>Apply on original site ↗</a>
-        {!match.cover_letter && <button className="btn-secondary" disabled={busy} onClick={generateKit}>{busy ? 'Generating…' : 'Generate application kit'}</button>}
+        {!match.tailored_resume?.content && (
+          <button
+            className="btn-secondary"
+            disabled={busy}
+            onClick={generateKit}
+          >
+            {busy
+              ? 'Generating…'
+              : 'Create ATS resume & application kit'}
+          </button>
+        )}
         <select className="input w-auto py-2" value={match.status} disabled={busy} onChange={(event: React.ChangeEvent<HTMLSelectElement>) => void patch({ status: event.target.value })}>
           {['new', 'reviewed', 'applied', 'interview', 'offer', 'rejected'].map((status) => <option key={status} value={status}>{status[0].toUpperCase() + status.slice(1)}</option>)}
         </select>
       </div>
 
       {message && <p className="mt-3 text-sm text-rose-600">{message}</p>}
+
+      {match.tailored_resume?.content && (
+        <details
+          open
+          className="mt-5 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4"
+        >
+          <summary className="cursor-pointer text-sm font-black">
+            ATS Resume Studio
+          </summary>
+
+          <div className="mt-4 flex items-center gap-4">
+            <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
+              <p className="text-[10px] font-bold uppercase text-slate-400">
+                ATS readiness
+              </p>
+              <p className="mt-1 text-2xl font-black text-indigo-700">
+                {Math.round(match.ats_report?.score || 0)}%
+              </p>
+            </div>
+
+            <p className="text-xs leading-5 text-slate-500">
+              Review every statement before applying.
+              The score is only an estimate.
+            </p>
+          </div>
+
+          <label
+            className="label mt-5"
+            htmlFor={`resume-${match.id}`}
+          >
+            Editable job-specific resume
+          </label>
+
+          <textarea
+            id={`resume-${match.id}`}
+            className="input min-h-[36rem] whitespace-pre-wrap font-mono text-sm leading-6"
+            value={match.tailored_resume.content}
+            onChange={(event) =>
+              setMatch((current) => ({
+                ...current,
+                tailored_resume: {
+                  template: 'modern-ats',
+                  content: event.target.value
+                }
+              }))
+            }
+          />
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              className="btn-primary"
+              disabled={busy}
+              onClick={() =>
+                void patch({
+                  tailored_resume: match.tailored_resume
+                })
+              }
+            >
+              Save resume
+            </button>
+
+            <a
+              className="btn-secondary"
+              href={`/api/matches/${match.id}/resume?format=docx`}
+            >
+              Download DOCX
+            </a>
+
+            <a
+              className="btn-secondary"
+              href={`/api/matches/${match.id}/resume?format=pdf`}
+            >
+              Download PDF
+            </a>
+          </div>
+        </details>
+      )}
 
       {match.cover_letter && (
         <details className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">

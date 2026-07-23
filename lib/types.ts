@@ -46,9 +46,26 @@ export interface ScoreBreakdown {
   total: number
 }
 
+export interface TailoredResume {
+  template: 'modern-ats'
+  content: string
+}
+
+export interface AtsReport {
+  score: number
+  matchedKeywords: string[]
+  missingKeywords: string[]
+  warnings: string[]
+}
+
 export interface ApplicationKit {
   whyFit: string[]
   coverLetter: string
   resumeTweaks: string[]
-  screeningAnswers: Array<{ question: string; answer: string }>
+  screeningAnswers: Array<{
+    question: string
+    answer: string
+  }>
+  tailoredResume: TailoredResume
+  atsReport: AtsReport
 }

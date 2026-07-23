@@ -9,7 +9,7 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   const { data: matches } = await supabase
     .from('matches')
-    .select('id, score, score_breakdown, status, why_fit, cover_letter, resume_tweaks, screening_answers, created_at, jobs!inner(title, company, location, work_mode, salary_min, salary_max, salary_currency, external_url, posted_at)')
+    .select('id, score, score_breakdown, status, why_fit, cover_letter, resume_tweaks, screening_answers, tailored_resume, ats_report, created_at, jobs!inner(title, company, location, work_mode, salary_min, salary_max, salary_currency, external_url, posted_at)')
     .eq('user_id', user!.id)
     .order('score', { ascending: false })
     .limit(30)
