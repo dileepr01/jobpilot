@@ -38,3 +38,41 @@ describe('scoreJob', () => {
     expect(scoreJob(job, preferences, 2).total).toBeLessThanOrEqual(100)
   })
 })
+
+describe('score normalization', () => {
+  it('treats admin and administrator as equivalent', () => {
+    const adminJob = {
+      ...job,
+      title: 'Power BI Administrator'
+    }
+
+    const result = scoreJob(
+      adminJob,
+      {
+        ...preferences,
+        targetRoles: ['Power BI Admin']
+      },
+      0.6
+    )
+
+    expect(result.role).toBe(10)
+  })
+
+  it('treats Bengaluru and Bangalore as equivalent', () => {
+    const bangaloreJob = {
+      ...job,
+      location: 'Bangalore, Karnataka'
+    }
+
+    const result = scoreJob(
+      bangaloreJob,
+      {
+        ...preferences,
+        locations: ['Bengaluru']
+      },
+      0.6
+    )
+
+    expect(result.location).toBe(6)
+  })
+})
