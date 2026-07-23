@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Pull Vercel environment
         run: npx vercel@56.4.1 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
         env:
