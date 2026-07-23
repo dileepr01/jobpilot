@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
 import { parseResume } from '@/lib/resume-parser'
-import { embedText, extractResumeIntelligence } from '@/lib/hf'
+import { embedText, heuristicResumeIntelligence } from '@/lib/hf'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -30,10 +30,23 @@ export async function POST(request: Request) {
     const preferencesJson = String(form.get('preferences') || '{}')
     const preferences = preferencesSchema.parse(JSON.parse(preferencesJson))
     const resumeText = await parseResume(file)
-    const [parsedResume, embedding] = await Promise.all([
-      extractResumeIntelligence(resumeText),
-      embedText(resumeText)
-    ])
+
+    const heuristic = heuristicResumeIntelligence(resumeText)
+
+    const parsedResume = {
+      ...heuristic,
+      name: fullName || heuristic.name,
+      titles: preferences.targetRoles.length
+        ? preferences.targetRoles
+        : heuristic.titles,
+      locations: preferences.locations.length
+        ? preferences.locations
+        : heuristic.locations,
+      noticePeriod:
+        preferences.noticePeriod || heuristic.noticePeriod
+    }
+
+    const embedding = await embedText(resumeText)
 
     const extension = file.name.toLowerCase().endsWith('.docx') ? 'docx' : 'pdf'
     const path = `${user.id}/${crypto.randomUUID()}.${extension}`

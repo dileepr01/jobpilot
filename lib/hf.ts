@@ -9,6 +9,33 @@ function client() {
   return new InferenceClient(getServerEnv().HF_API_TOKEN)
 }
 
+async function withDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `${label} timed out after ${timeoutMs}ms`
+              )
+            ),
+          timeoutMs
+        )
+      })
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 function flattenEmbedding(result: unknown): number[] {
   if (!Array.isArray(result)) throw new Error('Hugging Face returned a non-array embedding')
   if (result.length === 384 && result.every((item) => typeof item === 'number')) return result as number[]
@@ -22,7 +49,7 @@ function flattenEmbedding(result: unknown): number[] {
   throw new Error('Unsupported embedding shape')
 }
 
-function fallbackEmbedding(text: string): number[] {
+export function fallbackEmbedding(text: string): number[] {
   const vector = new Array<number>(384).fill(0)
 
   const tokens =
@@ -57,12 +84,18 @@ export async function embedText(text: string) {
   try {
     await limiter.wait()
 
-    const result = await withRetry(() =>
-      client().featureExtraction({
-        model: env.HF_EMBEDDING_MODEL,
-        provider: env.HF_EMBEDDING_PROVIDER as never,
-        inputs: text.slice(0, 12_000)
-      })
+    const result = await withDeadline(
+      withRetry(
+        () =>
+          client().featureExtraction({
+            model: env.HF_EMBEDDING_MODEL,
+            provider: env.HF_EMBEDDING_PROVIDER as never,
+            inputs: text.slice(0, 12_000)
+          }),
+        { retries: 0 }
+      ),
+      12_000,
+      'Hugging Face embedding'
     )
 
     const vector = flattenEmbedding(result)
@@ -94,17 +127,23 @@ async function generateJson<T>(
   try {
     await limiter.wait()
 
-    const result = await withRetry(() =>
-      client().chatCompletion({
-        model: env.HF_TEXT_MODEL,
-        provider: env.HF_TEXT_PROVIDER as never,
-        temperature: 0.2,
-        max_tokens: 1400,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ]
-      })
+    const result = await withDeadline(
+      withRetry(
+        () =>
+          client().chatCompletion({
+            model: env.HF_TEXT_MODEL,
+            provider: env.HF_TEXT_PROVIDER as never,
+            temperature: 0.2,
+            max_tokens: 1400,
+            messages: [
+              { role: 'system', content: system },
+              { role: 'user', content: user }
+            ]
+          }),
+        { retries: 0 }
+      ),
+      20_000,
+      'Hugging Face text generation'
     )
 
     const content = result.choices?.[0]?.message?.content
@@ -164,7 +203,7 @@ export async function generateProfileSuggestions(input: { resumeText: string; re
   )
 }
 
-function heuristicResumeIntelligence(
+export function heuristicResumeIntelligence(
   text: string
 ): ParsedResume {
   const escapeRegex = (value: string) =>
