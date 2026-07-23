@@ -23,7 +23,9 @@ export function Sidebar({ name }: { name: string }) {
           <Link key={href} href={href} className="whitespace-nowrap rounded-xl px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-indigo-50 hover:text-indigo-700 lg:block">{label}</Link>
         ))}
       </nav>
-      <div className="hidden lg:absolute lg:inset-x-5 lg:bottom-5 lg:block"><SignOutButton /></div>
+      <div className="mt-3 border-t border-slate-100 pt-3 lg:absolute lg:inset-x-5 lg:bottom-5 lg:mt-0 lg:border-0 lg:pt-0">
+        <SignOutButton />
+      </div>
     </aside>
   )
 }

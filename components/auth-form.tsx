@@ -48,11 +48,26 @@ export function AuthForm() {
 
   async function googleSignIn() {
     setLoading(true)
+    setMessage('')
+
     const supabase = createClient()
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback?next=/onboarding` }
-    })
+
+    const next =
+      safeNextPath(searchParams.get('next')) ||
+      '/dashboard'
+
+    const redirectTo =
+      `${window.location.origin}/auth/callback` +
+      `?next=${encodeURIComponent(next)}`
+
+    const { error } =
+      await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo
+        }
+      })
+
     if (error) {
       setMessage(error.message)
       setLoading(false)
