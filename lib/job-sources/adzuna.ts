@@ -4,7 +4,12 @@ import { stripHtml } from '@/lib/utils'
 export async function fetchAdzuna(context: SearchContext): Promise<DiscoveredJob[]> {
   const appId = process.env.ADZUNA_APP_ID
   const appKey = process.env.ADZUNA_APP_KEY
-  if (!appId || !appKey) return []
+  if (!appId || !appKey) {
+    console.log(
+      `[adzuna] skipped: appId=${Boolean(appId)} appKey=${Boolean(appKey)}`
+    )
+    return []
+  }
   const country = process.env.ADZUNA_COUNTRY || 'in'
   const query = context.queries.slice(0, 5).join(' OR ') || 'technology'
   const where = context.locations[0] || ''
@@ -18,7 +23,14 @@ export async function fetchAdzuna(context: SearchContext): Promise<DiscoveredJob
 
   const response = await fetch(url)
   if (!response.ok) throw new Error(`Adzuna returned ${response.status}`)
-  const payload = await response.json() as { results?: Array<Record<string, any>> }
+  const payload = await response.json() as {
+    results?: Array<Record<string, any>>
+  }
+
+  console.log(
+    `[adzuna] country=${country} query="${query}" location="${where}" jobs=${payload.results?.length || 0}`
+  )
+
   return (payload.results || []).map((job) => ({
     source: 'adzuna',
     externalId: String(job.id),
