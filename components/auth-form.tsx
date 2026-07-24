@@ -52,7 +52,6 @@ export function AuthForm() {
       <div className="mb-7">
         <p className="text-sm font-bold text-indigo-600">Welcome to JobPilot</p>
         <h1 className="mt-2 text-3xl font-black tracking-tight">{mode === 'signin' ? 'Sign in' : 'Create an account'}</h1>
-        <p className="mt-2 text-sm leading-6 text-slate-500">Your resume and application drafts stay in your Supabase project.</p>
       </div>
 
 
