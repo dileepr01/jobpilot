@@ -139,10 +139,32 @@ export function OnboardingForm() {
     })
 
     const data = await response.json().catch(() => ({}))
-    setLoading(false)
 
     if (!response.ok) {
+      setLoading(false)
       setMessage(data.error || 'Could not process the resume.')
+      setMessageType('error')
+      return
+    }
+
+    setMessage('Profile saved. Finding your best job matches…')
+    setMessageType('success')
+
+    const matchResponse = await fetch('/api/matches/run', {
+      method: 'POST'
+    })
+
+    const matchData = await matchResponse
+      .json()
+      .catch(() => ({}))
+
+    setLoading(false)
+
+    if (!matchResponse.ok) {
+      setMessage(
+        matchData.error ||
+          'Your profile was saved, but matches could not be generated.'
+      )
       setMessageType('error')
       return
     }
