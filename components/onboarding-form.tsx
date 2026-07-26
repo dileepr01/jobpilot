@@ -22,6 +22,7 @@ export function OnboardingForm() {
 
   const [loading, setLoading] = useState(false)
   const [previewing, setPreviewing] = useState(false)
+  const [profileReady, setProfileReady] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState<'success' | 'error'>('success')
 
@@ -32,10 +33,16 @@ export function OnboardingForm() {
 
   async function previewResume(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
-    if (!file) return
 
+    if (!file) {
+      setProfileReady(false)
+      setMessage('')
+      return
+    }
+
+    setProfileReady(false)
     setPreviewing(true)
-    setMessage('Reading your resume and filling available details…')
+    setMessage('Uploading resume and preparing suggestions…')
     setMessageType('success')
 
     try {
@@ -89,12 +96,17 @@ export function OnboardingForm() {
         )
       }
 
-      setMessage('Resume details filled. Please review them before finishing.')
+      setProfileReady(true)
+      setMessage(
+        'Suggestions are ready. Review and edit them to match your requirements.'
+      )
       setMessageType('success')
     } catch (error) {
-      setMessage(
+      const reason =
         error instanceof Error ? error.message : 'Could not read the resume.'
-      )
+
+      setProfileReady(true)
+      setMessage(`${reason} You can enter the details manually.`)
       setMessageType('error')
     } finally {
       setPreviewing(false)
@@ -147,8 +159,8 @@ export function OnboardingForm() {
           Build your matching profile
         </h1>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          Upload a PDF or DOCX resume. JobPilot automatically fills supported
-          fields and creates a private embedding for matching.
+          Upload a PDF or DOCX resume. The remaining fields will unlock after
+          JobPilot prepares suggestions for you to review and edit.
         </p>
       </div>
 
@@ -167,8 +179,26 @@ export function OnboardingForm() {
           <p className="mt-1.5 text-xs text-slate-500">
             Maximum 4 MB. Stored in a private Supabase Storage bucket.
           </p>
+
+          {message && (
+            <p
+              className={`mt-3 rounded-xl p-3 text-sm ${
+                messageType === 'error'
+                  ? 'bg-rose-50 text-rose-700'
+                  : 'bg-indigo-50 text-indigo-700'
+              }`}
+            >
+              {message}
+            </p>
+          )}
         </div>
 
+        <fieldset
+          disabled={!profileReady || previewing}
+          className={`sm:col-span-2 grid gap-5 border-0 p-0 sm:grid-cols-2 ${
+            !profileReady || previewing ? 'opacity-50' : ''
+          }`}
+        >
         <div>
           <label className="label" htmlFor="fullName">Full name</label>
           <input
@@ -265,28 +295,17 @@ export function OnboardingForm() {
             placeholder="Microsoft, Google, NVIDIA"
           />
         </div>
+        </fieldset>
       </div>
-
-      {message && (
-        <p
-          className={`mt-5 rounded-xl p-3 text-sm ${
-            messageType === 'error'
-              ? 'bg-rose-50 text-rose-700'
-              : 'bg-emerald-50 text-emerald-700'
-          }`}
-        >
-          {message}
-        </p>
-      )}
 
       <button
         className="btn-primary mt-8 w-full sm:w-auto"
-        disabled={loading || previewing}
+        disabled={loading || previewing || !profileReady}
       >
         {previewing
-          ? 'Reading resume…'
+          ? 'Preparing suggestions…'
           : loading
-            ? 'Parsing and embedding…'
+            ? 'Saving profile…'
             : 'Finish setup'}
       </button>
     </form>
