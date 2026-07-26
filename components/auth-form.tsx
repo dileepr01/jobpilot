@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -63,6 +64,15 @@ export function AuthForm() {
         <div>
           <label className="label" htmlFor="password">Password</label>
           <input className="input" id="password" type="password" minLength={8} autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} required value={password} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPassword(e.target.value)} />
+
+          {mode === 'signin' && (
+            <Link
+              href="/forgot-password"
+              className="mt-2 block text-right text-sm font-semibold text-indigo-700"
+            >
+              Forgot password?
+            </Link>
+          )}
         </div>
         {message && <p className="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{message}</p>}
         <button className="btn-primary w-full" disabled={loading}>{loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}</button>
