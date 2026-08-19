@@ -2,7 +2,7 @@
 
 JobPilot is a human-in-the-loop AI job search assistant built with Next.js 14, Supabase, Hugging Face Inference Providers, GitHub Actions, Resend, and optional Telegram notifications.
 
-It **does not** store LinkedIn or Naukri credentials, log in through a headless browser, scrape authenticated pages, or submit applications. Every Apply button opens the original job posting for the user to review and submit manually.
+It **does not** store LinkedIn or Naukri credentials, log in through a headless browser, scrape authenticated pages, or submit applications. Every Apply button opens the original job posting for the user to review and submit manually. LinkedIn, Glassdoor, Naukri, Indeed, and similar publisher listings can be surfaced through the configured JSearch aggregation API when that provider returns them; JobPilot records the publisher identity and keeps `JSearch` in metadata as the discovery path.
 
 ## What is included
 
@@ -11,7 +11,8 @@ It **does not** store LinkedIn or Naukri credentials, log in through a headless 
 - Resume text extraction and structured resume intelligence
 - 384-dimensional resume and job embeddings using `sentence-transformers/all-MiniLM-L6-v2`
 - pgvector cosine-similarity matching with explainable preference bonuses
-- Public job sources: Remotive, Adzuna, Jooble, JSearch, Greenhouse, Lever, and RSS
+- Public job sources: Remotive, Adzuna, Jooble, JSearch, Himalayas, Remote OK, Greenhouse, Lever, and RSS
+- Publisher attribution for JSearch results including LinkedIn, Glassdoor, Naukri, Indeed, Monster, Foundit, Dice, ZipRecruiter, SimplyHired, and Talent.com when present in upstream results
 - Cached embeddings and rate-limited Hugging Face calls
 - AI-generated fit bullets, cover letters, resume keyword suggestions, and screening answers
 - Daily job dashboard and application Kanban board
@@ -30,7 +31,7 @@ scripts/                     Daily and weekly scheduled entry points
 supabase/migrations/         pgvector schema, grants, RLS, Storage policies
 supabase/functions/          Resend digest Edge Function
 .github/workflows/           CI, daily cron, weekly cron, Vercel deployment
-tests/                       Matching score tests
+tests/                       Matching, source, and resume-export tests
 ```
 
 ## 1. Install
@@ -101,7 +102,7 @@ npx supabase@latest secrets set \
 
 ## 5. Add job-source keys
 
-Remotive works without a key. Add any combination of:
+Remotive, Himalayas, and Remote OK work without a key. Add any combination of:
 
 ```dotenv
 ADZUNA_APP_ID=
@@ -110,6 +111,8 @@ ADZUNA_COUNTRY=in
 JOOBLE_API_KEY=
 RAPIDAPI_JSEARCH_KEY=
 ```
+
+JSearch is the optional aggregation layer used to expand publisher coverage. Depending on the upstream search results, it can surface jobs published on LinkedIn, Glassdoor, Naukri, Indeed, and other job boards without JobPilot logging into or scraping authenticated pages on those sites.
 
 Users can add public Greenhouse board tokens, Lever company slugs, and RSS feed URLs from Settings.
 
@@ -142,8 +145,8 @@ Either connect the repository directly in Vercel or use the included `deploy-ver
 
 1. Load users with completed resume profiles.
 2. Build a union of target-role and location queries.
-3. Fetch only public/authorized job sources.
-4. Deduplicate by source and external ID.
+3. Fetch only public/authorized job sources and aggregation APIs.
+4. Preserve upstream publisher attribution where available and deduplicate by source and external ID.
 5. Hash descriptions and reuse cached embeddings.
 6. Embed changed/new jobs with the same model used for resumes.
 7. Retrieve semantic candidates through pgvector.
@@ -170,6 +173,8 @@ npm run lint
 npm test
 npm run build
 ```
+
+The `prebuild` script runs typecheck, lint, and tests automatically before production builds.
 
 ## Production hardening ideas
 
