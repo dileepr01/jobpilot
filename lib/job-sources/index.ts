@@ -7,6 +7,8 @@ import { fetchRemotive } from './remotive'
 import { fetchAdzuna } from './adzuna'
 import { fetchJooble } from './jooble'
 import { fetchJSearch } from './jsearch'
+import { fetchHimalayas } from './himalayas'
+import { fetchRemoteOk } from './remoteok'
 import { fetchGreenhouse } from './greenhouse'
 import { fetchLever } from './lever'
 import { fetchRss } from './rss'
@@ -20,7 +22,9 @@ export async function fetchAllJobSources(
     fetchRemotive(),
     fetchAdzuna(context),
     fetchJooble(context),
-    fetchJSearch(context)
+    fetchJSearch(context),
+    fetchHimalayas(context),
+    fetchRemoteOk(context)
   ]
 
   for (const source of followedSources) {
