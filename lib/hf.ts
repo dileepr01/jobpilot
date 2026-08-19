@@ -143,7 +143,7 @@ async function generateJson<T>(
           }),
         { retries: 0 }
       ),
-      20_000,
+      35_000,
       'Hugging Face text generation'
     )
 
@@ -215,22 +215,34 @@ Sincerely,`,
   }
 
   return generateJson<ApplicationKit>(
-    `You are a truthful ATS resume editor.
+    `You are a truthful senior-level ATS resume editor.
 
 Use only facts explicitly supported by the original resume.
 Never invent employers, dates, qualifications, tools,
 certifications, achievements, responsibilities, metrics,
 or years of experience.
 
-Create a modern ATS-safe resume:
-- single column
-- reverse chronological experience
-- standard section headings
-- concise achievement-oriented bullets
-- no tables, icons, graphics, sidebars, or text boxes
-- include job keywords naturally only when supported
-- preserve important career history
-- do not include a photo or personal demographic details
+Create a complete professional ATS-safe resume designed to render to approximately 2-3 pages when the source resume supports a senior candidate with substantial career history:
+- use a single column with clear visual hierarchy and reverse-chronological experience
+- preserve all supported employment history, education, certifications, meaningful achievements, and enterprise-scale responsibilities
+- first line must contain the candidate name only
+- second line must contain the professional headline/title only
+- third line must contain contact information only
+- put every standard section heading on its own line
+- put each employer/role and its dates/location on separate lines
+- write a focused 3-5 sentence professional summary that reflects seniority and the target role without exaggeration
+- target 6-10 materially distinct achievement-oriented bullets for the current role when the source resume provides enough evidence
+- target 4-7 materially distinct bullets for earlier major roles when supported; use fewer bullets for older or less relevant roles
+- retain quantified impact, platform scale, ownership, governance, reliability, automation, stakeholder influence, and leadership evidence when present in the source
+- prefer strong natural verbs and specific outcomes over generic phrases such as "responsible for"
+- keep bullets concise and non-repetitive; never pad length by restating the same claim
+- use blank lines between major sections so PDF/DOCX exporters preserve structure
+- never compress the resume into a single paragraph
+- never add Page 1, Page 2, or other page labels inside the resume content
+- no tables, icons, graphics, sidebars, text boxes, columns, photos, or demographic details
+- include job keywords naturally only when the original resume supports them
+- do not remove relevant career history merely to shorten the resume
+- if the source does not contain enough factual material for 2-3 pages, stay truthful and shorter rather than inventing filler
 
 Return only valid JSON.`,
     `Return this exact JSON structure:
@@ -255,7 +267,7 @@ Return only valid JSON.`,
   ],
   "tailoredResume": {
     "template": "modern-ats",
-    "content": "Complete ATS resume in plain text"
+    "content": "Complete ATS resume in plain text with real line breaks between header lines, sections, roles, and bullets"
   },
   "atsReport": {
     "score": 0,
@@ -270,6 +282,11 @@ ATS score must be between 0 and 100.
 Missing keywords must not be inserted as candidate skills
 unless the original resume supports them.
 
+For senior candidates, prioritize depth, scope, ownership,
+and measurable evidence over artificial brevity. The tailored
+resume should normally contain enough supported detail to fill
+2-3 professional pages without repetition or fabricated content.
+
 ORIGINAL RESUME:
 ${input.resumeText.slice(0, 18_000)}
 
@@ -279,7 +296,7 @@ ${input.jobTitle} at ${input.company}
 JOB DESCRIPTION:
 ${input.jobDescription.slice(0, 14_000)}`,
     fallback,
-    3200
+    5200
   )
 }
 
@@ -395,4 +412,3 @@ export function heuristicResumeIntelligence(
     noticePeriod
   }
 }
-
