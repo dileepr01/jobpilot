@@ -111,9 +111,13 @@ begin
 end;
 $$;
 
-revoke all on function public.upsert_job_for_search(
+revoke execute on function public.upsert_job_for_search(
   text,text,text,text,text,text,text,numeric,numeric,text,text,text,text,timestamptz,jsonb
 ) from public;
+
+revoke execute on function public.upsert_job_for_search(
+  text,text,text,text,text,text,text,numeric,numeric,text,text,text,text,timestamptz,jsonb
+) from anon;
 
 grant execute on function public.upsert_job_for_search(
   text,text,text,text,text,text,text,numeric,numeric,text,text,text,text,timestamptz,jsonb
