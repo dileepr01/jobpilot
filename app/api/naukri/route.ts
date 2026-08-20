@@ -17,9 +17,17 @@ const settingsSchema = z.object({
   enabled: z.boolean()
 })
 
+type EdgeResult = {
+  ok?: boolean
+  error?: string
+  changed?: boolean
+  changedFields?: string[]
+  message?: string
+}
+
 type EdgePayload = {
   error?: string
-  results?: Array<{ ok?: boolean; error?: string }>
+  results?: EdgeResult[]
 }
 
 async function authenticatedSession() {
@@ -81,7 +89,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       syncOk: first?.ok === true,
-      syncError: first?.error || null
+      syncError: first?.error || null,
+      syncMessage: first?.message || null,
+      changedFields: first?.changedFields || []
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not connect Naukri.'
@@ -99,14 +109,18 @@ export async function PUT() {
 
     if (first && first.ok === false) {
       return NextResponse.json(
-        { error: first.error || 'Naukri refresh failed.' },
+        { error: first.error || 'Naukri profile tune-up failed.' },
         { status: 400 }
       )
     }
 
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({
+      ok: true,
+      syncMessage: first?.message || 'Naukri profile checked successfully.',
+      changedFields: first?.changedFields || []
+    })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Naukri refresh failed.'
+    const message = error instanceof Error ? error.message : 'Naukri profile tune-up failed.'
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
@@ -124,7 +138,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not update Naukri Auto Refresh.'
+    const message = error instanceof Error ? error.message : 'Could not update Naukri Auto Tune-up.'
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
