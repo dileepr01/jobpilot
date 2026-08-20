@@ -28,6 +28,7 @@ type JobPilotProfile = {
   resume_text?: string | null
   parsed_resume?: Record<string, unknown> | null
   career_profile?: Record<string, unknown> | null
+  preferences?: Record<string, unknown> | null
 }
 
 const LOGIN_URL = 'https://www.naukri.com/central-login-services/v1/login'
@@ -280,21 +281,43 @@ function limitSkillsToNaukri(values: string[]) {
 function buildDesiredProfile(profile: JobPilotProfile) {
   const parsed = (profile.parsed_resume || {}) as Record<string, unknown>
   const career = (profile.career_profile || {}) as Record<string, unknown>
-  const resumeText = (profile.resume_text || '').toLowerCase()
+  const preferences = (profile.preferences || {}) as Record<string, unknown>
 
   const parsedSkills = asStringArray(parsed.skills)
-  const careerKeywords = asString(career.keywords)
+  const explicitCareerSkills = Array.isArray(career.skills)
+    ? asStringArray(career.skills)
+    : []
+  const keywordSkills = asString(career.keywords)
     .split(',')
     .map((item) => item.trim())
-    .filter((skill) => skill && resumeText.includes(skill.toLowerCase()))
+    .filter(Boolean)
 
-  const keySkills = limitSkillsToNaukri([...parsedSkills, ...careerKeywords])
+  // A user-edited Career Profile is authoritative. If the user removes a skill
+  // there, the next Naukri sync removes it too instead of re-adding it from the
+  // uploaded resume. Resume skills are only a fallback for profiles that have
+  // not been explicitly edited yet.
+  const careerIsAuthoritative = asString(career.source) === 'user' || Array.isArray(career.skills)
+  const keySkills = limitSkillsToNaukri(
+    careerIsAuthoritative
+      ? [...explicitCareerSkills, ...keywordSkills]
+      : [...parsedSkills, ...keywordSkills]
+  )
+
   const parsedTitles = asStringArray(parsed.titles)
-  const headline = asString(career.headline) || parsedTitles[0] || ''
+  const targetRoles = asStringArray(preferences.targetRoles)
+  const headline =
+    asString(career.headline) ||
+    asString(career.currentTitle) ||
+    parsedTitles[0] ||
+    targetRoles[0] ||
+    ''
+  const summary = asString(career.summary)
 
   return {
     headline: headline.slice(0, 250),
-    keySkills
+    summary: summary.slice(0, 3000),
+    keySkills,
+    explicitSkills: careerIsAuthoritative
   }
 }
 
@@ -337,7 +360,7 @@ async function syncUser(
         admin.rpc('get_naukri_sync_credentials', { p_user_id: userId }),
         admin
           .from('profiles')
-          .select('resume_text, parsed_resume, career_profile')
+          .select('resume_text, parsed_resume, career_profile, preferences')
           .eq('user_id', userId)
           .single()
       ])
@@ -349,23 +372,21 @@ async function syncUser(
     if (!credential?.username || !credential.password) {
       throw new Error('Naukri is not connected.')
     }
-    if (!profile?.resume_text) {
-      throw new Error('Upload a resume to JobPilot before enabling Naukri Auto Refresh.')
+
+    const desired = buildDesiredProfile(profile as JobPilotProfile)
+    if (!desired.headline && !desired.summary && desired.keySkills.length === 0 && !desired.explicitSkills) {
+      throw new Error('Add Career Profile details before syncing Naukri.')
     }
 
     const cookies = await loginNaukri(credential.username, credential.password)
     const profileId = credential.profile_id || (await discoverProfileId(cookies))
     if (!profileId) {
-      throw new Error('JobPilot could not detect your Naukri profile ID. Open Naukri Auto Refresh and add the profile ID once.')
-    }
-
-    const desired = buildDesiredProfile(profile as JobPilotProfile)
-    if (!desired.headline && desired.keySkills.length === 0) {
-      throw new Error('JobPilot does not have enough verified profile data to update Naukri yet.')
+      throw new Error('JobPilot could not detect your Naukri profile ID. Open Naukri Sync and add the profile ID once.')
     }
 
     const current = await readNaukriProfile(cookies)
     const currentHeadline = asString(findValueByKeys(current, ['resumeHeadline']))
+    const currentSummary = asString(findValueByKeys(current, ['profileSummary', 'summary']))
     const currentSkills = asStringArray(findValueByKeys(current, ['keySkills', 'keyskills']))
 
     const changedFields: string[] = []
@@ -376,18 +397,23 @@ async function syncUser(
       changedFields.push('resume headline')
     }
 
-    const currentSkillKey = uniqueCaseInsensitive(currentSkills)
-      .map((item) => item.toLowerCase())
-      .sort()
-      .join('|')
-    const desiredSkillKey = uniqueCaseInsensitive(desired.keySkills)
-      .map((item) => item.toLowerCase())
-      .sort()
-      .join('|')
+    if (desired.summary && normalizeText(desired.summary) !== normalizeText(currentSummary)) {
+      update.profileSummary = desired.summary
+      changedFields.push('profile summary')
+    }
 
-    if (desired.keySkills.length && desiredSkillKey !== currentSkillKey) {
-      update.keySkills = desired.keySkills.join(',')
-      changedFields.push('key skills')
+    const normalizedCurrent = uniqueCaseInsensitive(currentSkills)
+    const normalizedDesired = uniqueCaseInsensitive(desired.keySkills)
+    const currentMap = new Map(normalizedCurrent.map((item) => [item.toLowerCase(), item]))
+    const desiredMap = new Map(normalizedDesired.map((item) => [item.toLowerCase(), item]))
+    const addedSkills = normalizedDesired.filter((item) => !currentMap.has(item.toLowerCase()))
+    const removedSkills = normalizedCurrent.filter((item) => !desiredMap.has(item.toLowerCase()))
+
+    if (desired.explicitSkills || desired.keySkills.length > 0) {
+      if (addedSkills.length || removedSkills.length) {
+        update.keySkills = desired.keySkills.join(',')
+        changedFields.push('key skills')
+      }
     }
 
     if (changedFields.length > 0) {
@@ -402,14 +428,19 @@ async function syncUser(
       p_synced: changedFields.length > 0
     })
 
+    const skillMessage = addedSkills.length || removedSkills.length
+      ? ` Skills: ${addedSkills.length ? `+${addedSkills.join(', ')}` : ''}${addedSkills.length && removedSkills.length ? '; ' : ''}${removedSkills.length ? `-${removedSkills.join(', ')}` : ''}.`
+      : ''
+
     return {
       userId,
       ok: true,
       changed: changedFields.length > 0,
       changedFields,
+      skillChanges: { added: addedSkills, removed: removedSkills },
       message: changedFields.length
-        ? `Updated ${changedFields.join(' and ')}.`
-        : 'Naukri profile is already aligned with JobPilot; no artificial change was made.'
+        ? `Updated ${changedFields.join(', ')}.${skillMessage}`
+        : 'Naukri already matches your JobPilot Career Profile; no artificial change was made.'
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
@@ -441,6 +472,8 @@ Deno.serve(async (req: Request) => {
     const body = (await req.json().catch(() => ({}))) as RequestBody
     const cronToken = req.headers.get('x-jobpilot-cron')
 
+    // Kept for backwards compatibility while older environments remove their
+    // cron entry. New deployments are event-driven and do not schedule this.
     if (cronToken) {
       const { data: valid, error } = await admin.rpc('verify_naukri_cron_token', {
         p_token: cronToken
@@ -484,7 +517,7 @@ Deno.serve(async (req: Request) => {
       const profileId = body.profileId?.trim() || null
 
       if (body.consent !== true) {
-        return jsonResponse({ error: 'Consent is required for Naukri Auto Refresh.' }, 400)
+        return jsonResponse({ error: 'Consent is required for Naukri profile sync.' }, 400)
       }
       if (username.length < 3 || password.length < 4) {
         return jsonResponse({ error: 'Naukri username and password are required.' }, 400)
