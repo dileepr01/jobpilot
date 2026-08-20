@@ -42,6 +42,18 @@ const SECTION_HEADINGS = [
 
 const SECTION_SET = new Set<string>(SECTION_HEADINGS)
 
+const HEADING_VARIANTS = [
+  {
+    value: 'PROFESSIONAL EXPERIENCE - CONTINUED',
+    canonical: 'PROFESSIONAL EXPERIENCE'
+  },
+  {
+    value: 'PROFESSIONAL EXPERIENCE – CONTINUED',
+    canonical: 'PROFESSIONAL EXPERIENCE'
+  },
+  ...SECTION_HEADINGS.map((value) => ({ value, canonical: value }))
+].sort((left, right) => right.value.length - left.value.length)
+
 type BlockKind =
   | 'name'
   | 'title'
@@ -56,6 +68,12 @@ interface ResumeBlock {
   kind: BlockKind
   text: string
   section?: string
+}
+
+interface ResumeHeader {
+  name: string
+  title: string
+  contact: string
 }
 
 export function safeResumeFilename(value: string) {
@@ -74,11 +92,15 @@ function cleanLine(value: string) {
   return value
     .replace(/\u00a0/g, ' ')
     .replace(/[ \t]+/g, ' ')
+    .replace(/\s+([,;:])/g, '$1')
     .trim()
 }
 
 function headingFor(value: string) {
-  const upper = cleanLine(value).toUpperCase()
+  const upper = cleanLine(value)
+    .replace(/\s+[–-]\s+CONTINUED$/i, '')
+    .toUpperCase()
+
   return SECTION_SET.has(upper) ? upper : null
 }
 
@@ -93,51 +115,189 @@ function containsContact(value: string) {
   )
 }
 
-function structureFlattenedResume(content: string) {
-  let text = content
+function normalizedInput(content: string) {
+  return content
     .replace(/\\n/g, '\n')
     .replace(/\r\n?/g, '\n')
     .replace(/\u00a0/g, ' ')
     .replace(/\bPage\s+\d+(?:\s+of\s+\d+)?\b/gi, ' ')
+    .replace(/[ \t]+/g, ' ')
+}
 
-  const existingLines = text
+function firstSectionIndex(text: string) {
+  let first = -1
+
+  for (const { value } of HEADING_VARIANTS) {
+    const index = text.indexOf(value)
+    if (index >= 0 && (first < 0 || index < first)) first = index
+  }
+
+  return first
+}
+
+function extractHeader(headerText: string): ResumeHeader {
+  const compact = cleanLine(headerText.replace(/\n+/g, ' '))
+  const pieces = compact
+    .split(/\s*\|\s*/)
+    .map(cleanLine)
+    .filter(Boolean)
+
+  const name = cleanLine(pieces[0] || '')
+  const title = cleanLine(
+    pieces.find(
+      (piece, index) =>
+        index > 0 &&
+        !containsContact(piece) &&
+        !/^page\s+\d+/i.test(piece) &&
+        !name.toLowerCase().includes(piece.toLowerCase())
+    ) || ''
+  )
+
+  const email = compact.match(
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+  )?.[0]
+
+  const linkedin = compact.match(
+    /(?:https?:\/\/)?(?:www\.)?linkedin\.com\/in\/[^\s|]+/i
+  )?.[0]
+
+  const phone = compact.match(
+    /(?:\+?\d[\d ()-]{7,}\d)/
+  )?.[0]
+
+  const firstContactIndex = [email, linkedin, phone]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => compact.indexOf(value))
+    .filter((index) => index >= 0)
+    .sort((left, right) => left - right)[0]
+
+  let location = ''
+  if (firstContactIndex !== undefined) {
+    const beforeContact = compact
+      .slice(0, firstContactIndex)
+      .replace(/[|\s]+$/g, '')
+
+    location =
+      beforeContact.match(
+        /([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,2},\s*(?:India|USA|United States|UK|Canada|Australia|UAE))$/i
+      )?.[1] || ''
+  }
+
+  const contact = [location, phone, email, linkedin]
+    .filter(Boolean)
+    .join(' | ')
+
+  const fallbackLines = headerText
     .split('\n')
     .map(cleanLine)
     .filter(Boolean)
 
-  if (existingLines.length >= 8) return text
+  return {
+    name: name || fallbackLines[0] || 'Candidate',
+    title:
+      title ||
+      fallbackLines.find(
+        (line, index) => index > 0 && !containsContact(line)
+      ) ||
+      'Professional Profile',
+    contact:
+      contact ||
+      fallbackLines.find((line) => containsContact(line)) ||
+      ''
+  }
+}
 
-  const headings = [...SECTION_HEADINGS]
-    .sort((a, b) => b.length - a.length)
-    .map(escapeRegex)
-    .join('|')
+function removeRepeatedHeader(
+  value: string,
+  header: ResumeHeader
+) {
+  let text = value
 
-  text = text.replace(
-    new RegExp(`\\s*(${headings})\\s*`, 'g'),
-    '\n$1\n'
-  )
+  if (header.name && header.title) {
+    const exactHeader = new RegExp(
+      `${escapeRegex(header.name)}\\s*\\|\\s*${escapeRegex(
+        header.title
+      )}\\s*\\|?`,
+      'gi'
+    )
+    text = text.replace(exactHeader, ' ')
+  }
 
-  text = text.replace(/\s*[•●▪◦]\s*/g, '\n- ')
-
-  const rolePattern =
-    /\s+(?=(?:Senior Software Engineer|Technology Lead|Associate IT Analyst|Principal Engineer|Lead Engineer|Senior Engineer|BI Platform Engineer|Power BI Administrator)\b)/gi
-
-  text = text.replace(rolePattern, '\n')
+  if (header.name) {
+    text = text.replace(
+      new RegExp(`\\s+${escapeRegex(header.name)}\\s+(?=${escapeRegex(header.title)})`, 'gi'),
+      ' '
+    )
+  }
 
   return text
 }
 
-function normalizeResume(content: string) {
-  const lines = structureFlattenedResume(content)
+function addStructureBreaks(value: string) {
+  let text = value
+
+  for (const { value: variant, canonical } of HEADING_VARIANTS) {
+    text = text.replace(
+      new RegExp(`\\s*${escapeRegex(variant)}\\s*`, 'g'),
+      `\n${canonical}\n`
+    )
+  }
+
+  text = text
+    .replace(/\s*[•●▪◦]\s*/g, '\n- ')
+    .replace(/\n\s*[-*]\s+/g, '\n- ')
+
+  return text
+}
+
+export function normalizeResumeForExport(content: string) {
+  const text = normalizedInput(content)
+  const sectionIndex = firstSectionIndex(text)
+
+  if (sectionIndex < 0) {
+    return text
+      .split('\n')
+      .map(cleanLine)
+      .filter(Boolean)
+      .join('\n')
+  }
+
+  const header = extractHeader(text.slice(0, sectionIndex))
+  const body = addStructureBreaks(
+    removeRepeatedHeader(text.slice(sectionIndex), header)
+  )
+
+  const bodyLines = body
     .split('\n')
     .map(cleanLine)
     .filter(Boolean)
 
-  const result: string[] = []
+  const result = [header.name, header.title]
+  if (header.contact) result.push(header.contact)
 
-  for (const line of lines) {
+  let currentSection = ''
+
+  for (const line of bodyLines) {
     const heading = headingFor(line)
-    const normalized = heading || line
+
+    if (heading) {
+      if (heading === currentSection) continue
+      currentSection = heading
+      result.push(heading)
+      continue
+    }
+
+    const normalized = cleanLine(line)
+    if (!normalized) continue
+
+    if (
+      normalized.toLowerCase() === header.name.toLowerCase() ||
+      normalized.toLowerCase() === header.title.toLowerCase() ||
+      (header.contact &&
+        normalized.toLowerCase() === header.contact.toLowerCase())
+    ) {
+      continue
+    }
 
     if (
       result.length > 0 &&
@@ -149,15 +309,6 @@ function normalizeResume(content: string) {
     result.push(normalized)
   }
 
-  if (result.length === 1 && result[0].includes('|')) {
-    const parts = result[0]
-      .split(/\s*\|\s*/)
-      .map(cleanLine)
-      .filter(Boolean)
-
-    return parts.join('\n')
-  }
-
   return result.join('\n')
 }
 
@@ -165,10 +316,10 @@ function looksLikeRole(value: string) {
   if (containsContact(value)) return false
 
   return (
-    /\b(?:Senior|Lead|Principal|Staff|Technology|Associate|Consultant|Manager|Engineer|Administrator|Developer|Analyst|Architect)\b/i.test(
+    /\b(?:Senior|Lead|Principal|Staff|Technology|Associate|Consultant|Manager|Engineer|Administrator|Developer|Analyst|Architect|Director|Specialist)\b/i.test(
       value
     ) &&
-    (/[|—–]/.test(value) || value.length < 110)
+    value.length < 170
   )
 }
 
@@ -179,12 +330,12 @@ function looksLikeMeta(value: string) {
     (/\b(?:India|Bengaluru|Bangalore|Hyderabad|Chennai|Pune|Mumbai|Delhi|Noida|Gurugram)\b/i.test(
       value
     ) &&
-      value.length < 140)
+      value.length < 180)
   )
 }
 
 function parseBlocks(content: string): ResumeBlock[] {
-  const lines = normalizeResume(content)
+  const lines = normalizeResumeForExport(content)
     .split('\n')
     .map(cleanLine)
     .filter(Boolean)
@@ -228,28 +379,38 @@ function parseBlocks(content: string): ResumeBlock[] {
       continue
     }
 
-    if (
-      currentSection.includes('EXPERIENCE') &&
-      looksLikeRole(line)
-    ) {
-      blocks.push({
-        kind: 'role',
-        text: line,
-        section: currentSection
-      })
-      continue
-    }
+    if (currentSection.includes('EXPERIENCE')) {
+      const [possibleRole, ...metaParts] = line
+        .split(/\s*\|\s*/)
+        .map(cleanLine)
+        .filter(Boolean)
 
-    if (
-      currentSection.includes('EXPERIENCE') &&
-      looksLikeMeta(line)
-    ) {
-      blocks.push({
-        kind: 'meta',
-        text: line,
-        section: currentSection
-      })
-      continue
+      if (looksLikeRole(possibleRole)) {
+        blocks.push({
+          kind: 'role',
+          text: possibleRole,
+          section: currentSection
+        })
+
+        const meta = metaParts.join(' | ')
+        if (meta) {
+          blocks.push({
+            kind: 'meta',
+            text: meta,
+            section: currentSection
+          })
+        }
+        continue
+      }
+
+      if (looksLikeMeta(line)) {
+        blocks.push({
+          kind: 'meta',
+          text: line,
+          section: currentSection
+        })
+        continue
+      }
     }
 
     blocks.push({
@@ -305,12 +466,12 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          spacing: { after: 80 },
+          spacing: { after: 70 },
           children: [
             new TextRun({
               text: block.text,
               bold: true,
-              size: 34,
+              size: 32,
               font: 'Arial',
               color: '17365D'
             })
@@ -324,7 +485,7 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          spacing: { after: 55 },
+          spacing: { after: 45 },
           children: [
             new TextRun({
               text: block.text,
@@ -343,7 +504,7 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           alignment: AlignmentType.CENTER,
-          spacing: { after: 180 },
+          spacing: { after: 160 },
           children: [
             new TextRun({
               text: block.text,
@@ -362,10 +523,7 @@ export function createDocxResume(content: string) {
         new Paragraph({
           heading: HeadingLevel.HEADING_2,
           keepNext: true,
-          spacing: {
-            before: 220,
-            after: 80
-          },
+          spacing: { before: 190, after: 70 },
           border: {
             bottom: {
               color: '2F5597',
@@ -378,7 +536,7 @@ export function createDocxResume(content: string) {
             new TextRun({
               text: block.text,
               bold: true,
-              size: 22,
+              size: 21,
               font: 'Arial',
               color: '2F5597'
             })
@@ -392,15 +550,12 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           keepNext: true,
-          spacing: {
-            before: 130,
-            after: 25
-          },
+          spacing: { before: 120, after: 20 },
           children: [
             new TextRun({
               text: block.text,
               bold: true,
-              size: 21,
+              size: 20,
               font: 'Arial',
               color: '1F1F1F'
             })
@@ -414,7 +569,7 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           keepNext: true,
-          spacing: { after: 65 },
+          spacing: { after: 55 },
           children: [
             new TextRun({
               text: block.text,
@@ -433,14 +588,11 @@ export function createDocxResume(content: string) {
       children.push(
         new Paragraph({
           bullet: { level: 0 },
-          spacing: {
-            after: 55,
-            line: 255
-          },
+          spacing: { after: 45, line: 250 },
           children: [
             new TextRun({
               text: block.text,
-              size: 19,
+              size: 18,
               font: 'Arial'
             })
           ]
@@ -451,14 +603,11 @@ export function createDocxResume(content: string) {
 
     children.push(
       new Paragraph({
-        spacing: {
-          after: 80,
-          line: 255
-        },
+        spacing: { after: 70, line: 250 },
         children: [
           new TextRun({
             text: block.text,
-            size: 19,
+            size: 18,
             font: 'Arial'
           })
         ]
@@ -470,15 +619,8 @@ export function createDocxResume(content: string) {
     styles: {
       default: {
         document: {
-          run: {
-            font: 'Arial',
-            size: 19
-          },
-          paragraph: {
-            spacing: {
-              line: 255
-            }
-          }
+          run: { font: 'Arial', size: 18 },
+          paragraph: { spacing: { line: 250 } }
         }
       }
     },
@@ -568,7 +710,7 @@ export async function createPdfResume(content: string) {
   const pageWidth = 595.28
   const pageHeight = 841.89
   const marginX = 48
-  const marginTop = 46
+  const marginTop = 44
   const marginBottom = 52
   const usableWidth = pageWidth - marginX * 2
 
@@ -582,7 +724,7 @@ export async function createPdfResume(content: string) {
     y = pageHeight - marginTop
   }
 
-  function footer() {
+  function drawFooter() {
     const text = `Page ${pageNumber}`
     const width = regular.widthOfTextAtSize(text, 8)
     page.drawText(text, {
@@ -596,7 +738,7 @@ export async function createPdfResume(content: string) {
 
   function ensureSpace(height: number) {
     if (y - height < marginBottom) {
-      footer()
+      drawFooter()
       addPage()
     }
   }
@@ -605,7 +747,7 @@ export async function createPdfResume(content: string) {
 
   blocks.forEach((block, index) => {
     if (index === preferredBreak && pageNumber === 1) {
-      footer()
+      drawFooter()
       addPage()
     }
 
@@ -625,18 +767,18 @@ export async function createPdfResume(content: string) {
           : regular
 
     const fontSize = isName
-      ? 17
+      ? 16
       : isTitle
         ? 10.5
         : isContact
-          ? 8.7
+          ? 8.5
           : isSection
-            ? 11.2
+            ? 10.8
             : isRole
-              ? 10.3
+              ? 10
               : isMeta
-                ? 8.8
-                : 9.4
+                ? 8.6
+                : 9.1
 
     const indent = isBullet ? 14 : 0
     const wrapped = wrapText(
@@ -648,23 +790,23 @@ export async function createPdfResume(content: string) {
 
     const lineHeight = fontSize + 3
     const extra = isName
-      ? 10
+      ? 8
       : isTitle
-        ? 8
+        ? 6
         : isContact
-          ? 14
+          ? 12
           : isSection
-            ? 15
+            ? 13
             : isRole
-              ? 8
+              ? 6
               : isMeta
-                ? 6
-                : 5
+                ? 5
+                : 4
 
     ensureSpace(wrapped.length * lineHeight + extra)
 
     if (isSection) {
-      y -= 7
+      y -= 5
       page.drawText(block.text, {
         x: marginX,
         y,
@@ -674,24 +816,17 @@ export async function createPdfResume(content: string) {
       })
 
       y -= fontSize + 3
-
       page.drawLine({
         start: { x: marginX, y: y + 2 },
         end: { x: pageWidth - marginX, y: y + 2 },
         thickness: 0.8,
         color: rgb(0.18, 0.34, 0.59)
       })
-
-      y -= 7
+      y -= 6
       return
     }
 
-    for (
-      let lineIndex = 0;
-      lineIndex < wrapped.length;
-      lineIndex += 1
-    ) {
-      const line = wrapped[lineIndex]
+    wrapped.forEach((line, lineIndex) => {
       let x = marginX + indent
 
       if (isName || isTitle || isContact) {
@@ -703,7 +838,7 @@ export async function createPdfResume(content: string) {
         page.drawCircle({
           x: marginX + 3,
           y: y + 3,
-          size: 1.7,
+          size: 1.6,
           color: rgb(0.12, 0.12, 0.12)
         })
       }
@@ -722,12 +857,12 @@ export async function createPdfResume(content: string) {
       })
 
       y -= lineHeight
-    }
+    })
 
     y -= extra
   })
 
-  footer()
+  drawFooter()
 
   const pages = pdf.getPages()
   pages.forEach((pdfPage, index) => {
