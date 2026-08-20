@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { generateApplicationKit } from '@/lib/hf'
+import { normalizeResumeForExport } from '@/lib/resume-documents'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -28,6 +29,10 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
     company: jobRelation.company,
     jobDescription: jobRelation.description
   })
+
+  kit.tailoredResume.content = normalizeResumeForExport(
+    kit.tailoredResume.content
+  )
 
   const { error } = await supabase.from('matches').update({
     why_fit: kit.whyFit,
