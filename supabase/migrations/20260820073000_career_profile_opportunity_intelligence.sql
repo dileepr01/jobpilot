@@ -8,8 +8,10 @@ alter table public.job_search_runs
   add constraint job_search_runs_trigger_check
   check (trigger in ('resume_upload', 'manual', 'profile_change'));
 
+-- Nullable by design so older matches do not render an empty object as a
+-- completed Application Pack before one has actually been prepared.
 alter table public.matches
-  add column if not exists application_pack jsonb not null default '{}'::jsonb;
+  add column if not exists application_pack jsonb;
 
 create table if not exists public.career_profile_events (
   id uuid primary key default extensions.gen_random_uuid(),
@@ -28,12 +30,14 @@ alter table public.career_profile_events enable row level security;
 grant select, insert on public.career_profile_events to authenticated;
 grant all on public.career_profile_events to service_role;
 
+drop policy if exists "career_profile_events_select_own" on public.career_profile_events;
 create policy "career_profile_events_select_own"
 on public.career_profile_events
 for select
 to authenticated
 using ((select auth.uid()) = user_id);
 
+drop policy if exists "career_profile_events_insert_own" on public.career_profile_events;
 create policy "career_profile_events_insert_own"
 on public.career_profile_events
 for insert
