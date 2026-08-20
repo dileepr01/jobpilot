@@ -4,7 +4,7 @@ import { SignOutButton } from '@/components/sign-out-button'
 const nav = [
   ['⌂', 'Discover', '/dashboard'],
   ['▤', 'Applications', '/dashboard/kanban'],
-  ['✦', 'Career insights', '/dashboard/suggestions'],
+  ['✦', 'Career profile', '/dashboard/suggestions'],
   ['⚙', 'Profile', '/dashboard/profile']
 ]
 
