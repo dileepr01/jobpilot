@@ -4,7 +4,7 @@ import { ProductTour } from '@/components/product-tour'
 const features = [
   ['Live discovery', 'Search supported job sources on demand instead of waiting for a scheduled batch.'],
   ['Match intelligence', 'Understand experience, skills, seniority, location and resume alignment before you spend time applying.'],
-  ['Senior resume tailoring', 'Create role-specific PDF and DOCX application material while preserving a professional multi-page resume structure.'],
+  ['Resume tailoring', 'Create role-specific PDF and DOCX application material while preserving a professional multi-page resume structure.'],
   ['Career pipeline', 'Keep saved roles, applications, interview progress and the resume used for each opportunity in one workspace.']
 ]
 
@@ -47,7 +47,7 @@ export default function HomePage() {
             Find better jobs. Build a stronger application. Move faster.
           </h1>
           <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600">
-            JobPilot turns your resume into a personal career workspace: live job discovery, explainable matching, senior-level resume tailoring and application tracking in one place.
+            JobPilot turns your resume into a personal career workspace: live job discovery, explainable matching, role-specific resume tailoring and application tracking in one place.
           </p>
           <div className="mt-9 flex flex-wrap gap-3">
             <Link className="btn-primary px-6 py-3" href="/login">Start with your resume</Link>
@@ -78,8 +78,8 @@ export default function HomePage() {
               <div className="mt-6 rounded-2xl border border-white/10 bg-white/[.04] p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-sm font-semibold text-cyan-300">MedTech · Hyderabad · Hybrid</p>
-                    <h3 className="mt-1 text-xl font-black">Principal Analytics Platform Engineer</h3>
+                    <p className="text-sm font-semibold text-cyan-300">Product company · Hybrid</p>
+                    <h3 className="mt-1 text-xl font-black">Senior Platform Engineer</h3>
                   </div>
                   <span className="rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-slate-300">New</span>
                 </div>
@@ -90,7 +90,7 @@ export default function HomePage() {
                 </div>
                 <div className="mt-5 rounded-xl border border-white/10 bg-slate-950/50 p-4">
                   <p className="text-xs font-bold uppercase tracking-wider text-slate-500">JobPilot insight</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-300">Strong alignment across enterprise BI administration, Fabric governance, platform reliability and senior ownership.</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">Strong alignment across required skills, seniority, relevant experience and location preferences.</p>
                 </div>
                 <div className="mt-5 flex gap-2">
                   <span className="rounded-xl bg-indigo-500 px-4 py-2.5 text-xs font-bold">Tailor resume</span>
@@ -137,7 +137,7 @@ export default function HomePage() {
           <div>
             <p className="section-kicker">How JobPilot works</p>
             <h2 className="section-title">A simple workflow that gets smarter with your profile.</h2>
-            <p className="section-copy">The product demo is interactive, so users can understand the full workflow without leaving the page or loading a third-party video player.</p>
+            <p className="section-copy">The autoplay product tour behaves like a short explainer while staying interactive, fast on mobile, and always in sync with the product.</p>
             <div className="mt-7"><ProductTour /></div>
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

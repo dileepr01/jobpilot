@@ -8,14 +8,14 @@ const steps = [
     title: 'Start with your real resume',
     body: 'Upload PDF or DOCX once. JobPilot builds a career profile from your experience, skills and seniority.',
     accent: 'Resume ready',
-    detail: '13+ years · BI Platform · Fabric · Azure'
+    detail: 'Experience · Skills · Education · Preferences'
   },
   {
     eyebrow: '02 · Discover',
     title: 'Search live jobs when you want',
     body: 'JobPilot checks supported live sources on demand and ranks openings against your profile and preferences.',
     accent: '24 new roles',
-    detail: 'Hyderabad · Bengaluru · Remote'
+    detail: 'Preferred cities · Remote · Hybrid'
   },
   {
     eyebrow: '03 · Understand',
@@ -27,7 +27,7 @@ const steps = [
   {
     eyebrow: '04 · Tailor',
     title: 'Create a role-specific application kit',
-    body: 'Generate a tailored senior resume, fit bullets, screening answers and interview talking points before you apply.',
+    body: 'Generate a tailored resume, fit bullets, screening answers and interview talking points before you apply.',
     accent: 'Application kit',
     detail: 'Resume · ATS review · Cover letter · Interview prep'
   },
