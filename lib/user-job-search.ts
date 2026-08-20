@@ -6,6 +6,7 @@ import { embedText } from '@/lib/hf'
 import { getServerEnv } from '@/lib/env'
 import { hashText } from '@/lib/utils'
 import { scoreJob } from '@/lib/score'
+import { createAdminClient } from '@/lib/supabase/admin'
 import type {
   CareerProfileData,
   JobPreferences,
@@ -34,10 +35,22 @@ function parseVector(value: unknown): number[] | null {
     try {
       return JSON.parse(value) as number[]
     } catch {
+      const trimmed = value.trim()
+      if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+        const parsed = trimmed
+          .slice(1, -1)
+          .split(',')
+          .map((item) => Number(item.trim()))
+        return parsed.every(Number.isFinite) ? parsed : null
+      }
       return null
     }
   }
   return null
+}
+
+function vectorLiteral(value: number[] | null) {
+  return value ? `[${value.join(',')}]` : null
 }
 
 function safeDate(value?: string) {
@@ -71,9 +84,9 @@ async function embeddingFor(text: string) {
   return embedText(text)
 }
 
-async function storeJob(supabase: SupabaseClient, job: DiscoveredJob) {
+async function storeJob(admin: SupabaseClient, job: DiscoveredJob) {
   const descriptionHash = hashText(job.description)
-  const { data: existing } = await supabase
+  const { data: existing } = await admin
     .from('jobs')
     .select('id, description_hash, embedding')
     .eq('source', job.source)
@@ -90,30 +103,37 @@ async function storeJob(supabase: SupabaseClient, job: DiscoveredJob) {
         `${job.title}\n${job.company}\n${job.location || ''}\n${job.description}`
       )
 
-  const { data, error } = await supabase.rpc('upsert_job_for_search', {
-    p_source: job.source,
-    p_external_id: job.externalId,
-    p_external_url: job.externalUrl,
-    p_title: job.title,
-    p_company: job.company,
-    p_location: job.location || null,
-    p_work_mode: job.workMode || null,
-    p_salary_min: job.salaryMin || null,
-    p_salary_max: job.salaryMax || null,
-    p_salary_currency: job.salaryCurrency || null,
-    p_description: job.description,
-    p_description_hash: descriptionHash,
-    p_embedding: embedding ? JSON.stringify(embedding) : null,
-    p_posted_at: safeDate(job.postedAt),
-    p_metadata: job.metadata || {}
-  })
+  const payload = {
+    source: job.source,
+    external_id: job.externalId,
+    external_url: job.externalUrl,
+    title: job.title,
+    company: job.company,
+    location: job.location || null,
+    work_mode: job.workMode || null,
+    salary_min: job.salaryMin || null,
+    salary_max: job.salaryMax || null,
+    salary_currency: job.salaryCurrency || null,
+    description: job.description,
+    description_hash: descriptionHash,
+    embedding: vectorLiteral(embedding),
+    posted_at: safeDate(job.postedAt),
+    last_seen_at: new Date().toISOString(),
+    metadata: job.metadata || {}
+  }
+
+  const { data, error } = await admin
+    .from('jobs')
+    .upsert(payload, { onConflict: 'source,external_id' })
+    .select('id')
+    .single()
 
   if (error) {
     console.error('[store-job]', job.source, job.externalId, error.message)
     return null
   }
 
-  return data as string
+  return data.id as string
 }
 
 async function enforceCooldown(supabase: SupabaseClient, userId: string) {
@@ -272,9 +292,10 @@ export async function searchAndMatchForUser(
       {}
     )
 
+    const admin = createAdminClient()
     const limit = pLimit(4)
     const storedIds = await Promise.all(
-      selected.map((job) => limit(() => storeJob(supabase, job)))
+      selected.map((job) => limit(() => storeJob(admin, job)))
     )
     const stored = storedIds.filter(Boolean).length
 
