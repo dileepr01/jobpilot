@@ -14,15 +14,15 @@ const steps = [
     eyebrow: '02 · Discover',
     title: 'Search live jobs when you want',
     body: 'JobPilot checks supported live sources on demand and ranks openings against your profile and preferences.',
-    accent: '24 new roles',
+    accent: 'Fresh opportunities',
     detail: 'Preferred cities · Remote · Hybrid'
   },
   {
     eyebrow: '03 · Understand',
     title: 'See why every role fits',
     body: 'Match intelligence breaks the score into experience, skills, seniority, location and resume signals.',
-    accent: '94% match',
-    detail: 'Skills 96% · Seniority 100% · Location 100%'
+    accent: 'Explainable match',
+    detail: 'Skills · Seniority · Experience · Location'
   },
   {
     eyebrow: '04 · Tailor',
@@ -40,7 +40,7 @@ const steps = [
   }
 ]
 
-export function ProductTour() {
+export function ProductTour({ label = 'Interactive walkthrough' }: { label?: string }) {
   const [open, setOpen] = useState(false)
   const [playing, setPlaying] = useState(false)
   const [step, setStep] = useState(0)
@@ -75,20 +75,20 @@ export function ProductTour() {
 
   return (
     <>
-      <button type="button" className="btn-secondary px-6 py-3" onClick={startTour}>
+      <button type="button" className="btn-secondary px-5 py-3" onClick={startTour}>
         <span className="mr-2 inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-950 text-[10px] text-white">▶</span>
-        Watch how it works
+        {label}
       </button>
 
       {open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="JobPilot product demo">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="JobPilot interactive walkthrough">
           <div className="w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/10 bg-slate-950 text-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-white/10 px-5 py-4 sm:px-7">
               <div>
-                <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-300">JobPilot demo</p>
-                <p className="mt-1 text-sm text-slate-400">A quick tour from resume to application</p>
+                <p className="text-xs font-bold uppercase tracking-[.2em] text-indigo-300">Interactive walkthrough</p>
+                <p className="mt-1 text-sm text-slate-400">Resume to application in five steps</p>
               </div>
-              <button type="button" onClick={closeTour} className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Close demo">
+              <button type="button" onClick={closeTour} className="rounded-full border border-white/10 px-3 py-1.5 text-sm text-slate-300 transition hover:bg-white/10 hover:text-white" aria-label="Close walkthrough">
                 Close
               </button>
             </div>
@@ -114,8 +114,11 @@ export function ProductTour() {
                     ))}
                   </div>
                   <div className="mt-5 flex items-center gap-3">
-                    <button type="button" className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-950" onClick={() => setPlaying((value) => !value)}>
-                      {playing ? 'Pause demo' : step === steps.length - 1 ? 'Replay demo' : 'Play demo'}
+                    <button type="button" className="rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-slate-950" onClick={() => {
+                      if (step === steps.length - 1) setStep(0)
+                      setPlaying((value) => step === steps.length - 1 ? true : !value)
+                    }}>
+                      {playing ? 'Pause' : step === steps.length - 1 ? 'Replay' : 'Play'}
                     </button>
                     <button type="button" className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-semibold text-slate-200 disabled:opacity-40" disabled={step === steps.length - 1} onClick={() => { setStep((value) => Math.min(value + 1, steps.length - 1)); setPlaying(false) }}>
                       Next
@@ -132,13 +135,13 @@ export function ProductTour() {
                     <span className="h-2.5 w-2.5 rounded-full bg-rose-400" />
                     <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
                     <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                    <span className="ml-3 text-xs font-semibold text-slate-400">app.jobpilot.ai</span>
+                    <span className="ml-3 text-xs font-semibold text-slate-400">JobPilot</span>
                   </div>
                   <div className="mt-6 rounded-2xl border border-white/10 bg-slate-950/45 p-5">
                     <p className="text-xs font-bold uppercase tracking-[.18em] text-slate-400">{current.accent}</p>
                     <p className="mt-3 text-2xl font-black text-white">{current.detail}</p>
                     <div className="mt-5 space-y-2">
-                      <div className="h-2 rounded-full bg-white/10"><div className="h-2 w-[94%] rounded-full bg-indigo-400" /></div>
+                      <div className="h-2 rounded-full bg-white/10"><div className="h-2 w-[88%] rounded-full bg-indigo-400" /></div>
                       <div className="grid grid-cols-3 gap-2">
                         <div className="h-16 rounded-xl bg-white/[.06]" />
                         <div className="h-16 rounded-xl bg-white/[.06]" />
