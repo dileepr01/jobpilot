@@ -13,9 +13,7 @@ const connectSchema = z.object({
   consent: z.literal(true)
 })
 
-const settingsSchema = z.object({
-  enabled: z.boolean()
-})
+const settingsSchema = z.object({ enabled: z.boolean() })
 
 type EdgeResult = {
   ok?: boolean
@@ -38,19 +36,12 @@ async function authenticatedSession() {
   } = await supabase.auth.getUser()
 
   if (userError || !user) return null
-
-  const {
-    data: { session }
-  } = await supabase.auth.getSession()
-
+  const { data: { session } } = await supabase.auth.getSession()
   if (!session?.access_token) return null
   return { accessToken: session.access_token }
 }
 
-async function invokeNaukri(
-  accessToken: string,
-  body: Record<string, unknown>
-) {
+async function invokeNaukri(accessToken: string, body: Record<string, unknown>) {
   const { url } = getPublicEnv()
   const response = await fetch(`${url}/functions/v1/naukri-sync`, {
     method: 'POST',
@@ -63,11 +54,9 @@ async function invokeNaukri(
   })
 
   const payload = (await response.json().catch(() => ({}))) as EdgePayload
-
   if (!response.ok) {
-    throw new Error(payload.error || 'Could not reach the Naukri sync service.')
+    throw new Error(payload.error || 'Could not reach the Naukri profile sync service.')
   }
-
   return payload
 }
 
@@ -109,7 +98,7 @@ export async function PUT() {
 
     if (first && first.ok === false) {
       return NextResponse.json(
-        { error: first.error || 'Naukri profile tune-up failed.' },
+        { error: first.error || 'Naukri profile sync failed.' },
         { status: 400 }
       )
     }
@@ -120,7 +109,7 @@ export async function PUT() {
       changedFields: first?.changedFields || []
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Naukri profile tune-up failed.'
+    const message = error instanceof Error ? error.message : 'Naukri profile sync failed.'
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
@@ -138,7 +127,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ ok: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not update Naukri Auto Tune-up.'
+    const message = error instanceof Error ? error.message : 'Could not update Naukri Profile Sync.'
     return NextResponse.json({ error: message }, { status: 400 })
   }
 }
