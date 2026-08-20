@@ -1,14 +1,44 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
-export function CareerProfileControls({ enabled }: { enabled: boolean }) {
+export function CareerProfileControls({
+  enabled,
+  refreshOnLoad = false
+}: {
+  enabled: boolean
+  refreshOnLoad?: boolean
+}) {
   const [autoUpdate, setAutoUpdate] = useState(enabled)
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [message, setMessage] = useState('')
   const router = useRouter()
+
+  async function performRefresh(showMessage = true) {
+    setRefreshing(true)
+    if (showMessage) setMessage('')
+
+    const response = await fetch('/api/career-profile', { method: 'POST' })
+    const data = await response.json().catch(() => ({})) as { error?: string }
+    setRefreshing(false)
+
+    if (!response.ok) {
+      setMessage(data.error || 'Could not refresh Career Insights.')
+      return
+    }
+
+    if (showMessage) setMessage('Career Profile refreshed from your latest JobPilot data.')
+    router.refresh()
+  }
+
+  useEffect(() => {
+    if (!enabled || !refreshOnLoad) return
+    void performRefresh(false)
+    // refreshOnLoad is computed server-side from the latest successful search.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, refreshOnLoad])
 
   async function toggleAutoUpdate() {
     const next = !autoUpdate
@@ -31,28 +61,12 @@ export function CareerProfileControls({ enabled }: { enabled: boolean }) {
 
     setAutoUpdate(next)
     setMessage(next ? 'Automatic JobPilot profile updates are on.' : 'Automatic updates are off.')
-  }
-
-  async function refreshNow() {
-    setRefreshing(true)
-    setMessage('')
-
-    const response = await fetch('/api/career-profile', { method: 'POST' })
-    const data = await response.json().catch(() => ({})) as { error?: string }
-    setRefreshing(false)
-
-    if (!response.ok) {
-      setMessage(data.error || 'Could not refresh Career Insights.')
-      return
-    }
-
-    setMessage('Career Profile refreshed from your latest JobPilot data.')
-    router.refresh()
+    if (next) void performRefresh(false)
   }
 
   return (
     <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-      <button type="button" className="btn-primary" onClick={refreshNow} disabled={refreshing}>
+      <button type="button" className="btn-primary" onClick={() => void performRefresh(true)} disabled={refreshing}>
         {refreshing ? 'Refreshing…' : 'Refresh now'}
       </button>
       <button type="button" className="btn-secondary" onClick={toggleAutoUpdate} disabled={saving}>
