@@ -15,7 +15,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Not found' }, { status: 404 })
   }
 
-  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN
+  const gatewayToken =
+    request.headers.get('x-vercel-oidc-token') ||
+    process.env.AI_GATEWAY_API_KEY ||
+    process.env.VERCEL_OIDC_TOKEN
+
   if (!gatewayToken) {
     return NextResponse.json({ ok: false, error: 'Gateway auth unavailable' }, { status: 500 })
   }
