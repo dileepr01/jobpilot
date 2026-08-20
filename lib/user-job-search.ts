@@ -6,9 +6,13 @@ import { embedText } from '@/lib/hf'
 import { getServerEnv } from '@/lib/env'
 import { hashText } from '@/lib/utils'
 import { scoreJob } from '@/lib/score'
-import type { JobPreferences, JobRecord } from '@/lib/types'
+import type {
+  CareerProfileData,
+  JobPreferences,
+  JobRecord
+} from '@/lib/types'
 
-export type JobSearchTrigger = 'resume_upload' | 'manual'
+export type JobSearchTrigger = 'resume_upload' | 'manual' | 'profile_change'
 
 const SEARCH_COOLDOWN_MS = 20_000
 const MAX_JOBS_PER_SOURCE = 18
@@ -26,7 +30,6 @@ export class SearchCooldownError extends Error {
 
 function parseVector(value: unknown): number[] | null {
   if (Array.isArray(value)) return value.map(Number)
-
   if (typeof value === 'string') {
     try {
       return JSON.parse(value) as number[]
@@ -34,7 +37,6 @@ function parseVector(value: unknown): number[] | null {
       return null
     }
   }
-
   return null
 }
 
@@ -57,10 +59,8 @@ function selectBalancedJobs(jobs: DiscoveredJob[]) {
   for (const job of sorted) {
     const count = counts.get(job.source) || 0
     if (count >= MAX_JOBS_PER_SOURCE) continue
-
     counts.set(job.source, count + 1)
     selected.push(job)
-
     if (selected.length >= MAX_JOBS_PER_SEARCH) break
   }
 
@@ -73,7 +73,6 @@ async function embeddingFor(text: string) {
 
 async function storeJob(supabase: SupabaseClient, job: DiscoveredJob) {
   const descriptionHash = hashText(job.description)
-
   const { data: existing } = await supabase
     .from('jobs')
     .select('id, description_hash, embedding')
@@ -166,10 +165,7 @@ async function sendSearchNotifications(
           body: JSON.stringify({ userId })
         }
       )
-
-      if (!response.ok) {
-        console.error('[search-email]', await response.text())
-      }
+      if (!response.ok) console.error('[search-email]', await response.text())
     } catch (error) {
       console.error('[search-email]', error)
     }
@@ -181,15 +177,15 @@ async function sendSearchNotifications(
     process.env.TELEGRAM_BOT_TOKEN
   ) {
     const top = scored
-      .filter((item) => item.breakdown.total >= 85)
+      .filter((item) => item.breakdown.bucket === 'apply_now')
       .slice(0, 5)
 
     if (top.length) {
       const text = [
-        '🚀 JobPilot high matches',
+        '🚀 JobPilot Apply Now opportunities',
         ...top.map(
           ({ job, breakdown }) =>
-            `${Math.round(breakdown.total)}% — ${job.title} at ${job.company}\n${job.external_url}`
+            `${Math.round(breakdown.total)} — ${job.title} at ${job.company}\n${job.external_url}`
         )
       ].join('\n\n')
 
@@ -206,10 +202,7 @@ async function sendSearchNotifications(
             })
           }
         )
-
-        if (!response.ok) {
-          console.error('[search-telegram]', await response.text())
-        }
+        if (!response.ok) console.error('[search-telegram]', await response.text())
       } catch (error) {
         console.error('[search-telegram]', error)
       }
@@ -237,7 +230,7 @@ export async function searchAndMatchForUser(
       supabase
         .from('profiles')
         .select(
-          'preferences, resume_embedding, email_digest_enabled, telegram_enabled, telegram_chat_id'
+          'preferences, resume_embedding, career_profile, email_digest_enabled, telegram_enabled, telegram_chat_id'
         )
         .eq('user_id', userId)
         .single(),
@@ -253,10 +246,11 @@ export async function searchAndMatchForUser(
 
     const profile = profileResult.data
     if (!profile?.resume_embedding) {
-      throw new Error('Complete your matching profile first.')
+      throw new Error('Complete your Career Profile first.')
     }
 
     const preferences = (profile.preferences || {}) as JobPreferences
+    const career = (profile.career_profile || {}) as Partial<CareerProfileData>
     const queries = (preferences.targetRoles || []).filter(Boolean).slice(0, 6)
     const locations = (preferences.locations || []).filter(Boolean).slice(0, 4)
 
@@ -288,7 +282,6 @@ export async function searchAndMatchForUser(
       'match_jobs_for_profile',
       { p_user_id: userId, p_limit: 250 }
     )
-
     if (candidateError) throw candidateError
 
     const candidateRows = candidates || []
@@ -306,15 +299,11 @@ export async function searchAndMatchForUser(
         .from('jobs')
         .select('*')
         .in('id', jobIds)
-
       if (jobsError) throw jobsError
 
       const similarities = new Map<string, number>(
         candidateRows.map(
-          (candidate: {
-            job_id: string
-            semantic_similarity: number
-          }) => [
+          (candidate: { job_id: string; semantic_similarity: number }) => [
             String(candidate.job_id),
             Number(candidate.semantic_similarity)
           ]
@@ -327,12 +316,16 @@ export async function searchAndMatchForUser(
           breakdown: scoreJob(
             job,
             preferences,
-            similarities.get(job.id) ?? 0
+            similarities.get(job.id) ?? 0,
+            {
+              skills: career.skills || [],
+              currentTitle: career.currentTitle || career.headline || '',
+              yearsExperience: career.yearsExperience
+            }
           )
         }))
         .sort(
-          (left, right) =>
-            right.breakdown.total - left.breakdown.total
+          (left, right) => right.breakdown.total - left.breakdown.total
         )
         .slice(0, 100)
 
@@ -348,20 +341,18 @@ export async function searchAndMatchForUser(
             })),
             { onConflict: 'user_id,job_id' }
           )
-
         if (matchError) throw matchError
       }
     }
 
-    const scores = scored.map((item) => item.breakdown.total)
     const metrics = {
       discovered: discovered.length,
       selected: selected.length,
       stored,
-      matches: scores.length,
-      strong: scores.filter((score) => score >= 80).length,
-      potential: scores.filter((score) => score >= 50 && score < 80).length,
-      stretch: scores.filter((score) => score < 50).length,
+      matches: scored.length,
+      applyNow: scored.filter((item) => item.breakdown.bucket === 'apply_now').length,
+      consider: scored.filter((item) => item.breakdown.bucket === 'consider').length,
+      skipped: scored.filter((item) => item.breakdown.bucket === 'skip').length,
       sources: sourceCounts
     }
 
@@ -373,15 +364,12 @@ export async function searchAndMatchForUser(
         metrics
       })
       .eq('id', run.id)
-
     if (completeError) throw completeError
 
     await sendSearchNotifications(userId, profile, scored)
-
     return metrics
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
-
     const { error: updateError } = await supabase
       .from('job_search_runs')
       .update({
@@ -391,10 +379,7 @@ export async function searchAndMatchForUser(
       })
       .eq('id', run.id)
 
-    if (updateError) {
-      console.error('[job-search-run]', updateError.message)
-    }
-
+    if (updateError) console.error('[job-search-run]', updateError.message)
     throw error
   }
 }
