@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { generateProfileSuggestions } from '@/lib/hf'
+import { generateProfileSuggestions } from '@/lib/ai-text'
 import type {
   CareerProfileData,
   JobPreferences,
