@@ -17,17 +17,38 @@ body {
   min-height: 100vh;
   color: rgb(var(--ink));
   background:
-    radial-gradient(circle at 10% 0%, rgba(129, 140, 248, .16), transparent 28%),
-    radial-gradient(circle at 100% 10%, rgba(45, 212, 191, .12), transparent 24%),
-    #f8fafc;
+    radial-gradient(circle at 12% -8%, rgba(99, 102, 241, .14), transparent 32%),
+    radial-gradient(circle at 95% 8%, rgba(34, 211, 238, .10), transparent 26%),
+    linear-gradient(180deg, #fbfdff 0%, #f8fafc 58%, #f7f8fc 100%);
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  color: #0f172a;
+  background: #c7d2fe;
 }
 
 button, input, textarea, select { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
 
 @layer components {
-  .card { @apply rounded-3xl border border-slate-200/80 bg-white shadow-card; }
-  .btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50; }
-  .btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50; }
+  .card { @apply rounded-3xl border border-slate-200/80 bg-white/90 shadow-card backdrop-blur-sm; }
+  .card-hover { @apply transition duration-300 hover:-translate-y-1 hover:border-indigo-200 hover:shadow-xl; }
+  .btn-primary { @apply inline-flex items-center justify-center rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-indigo-600 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50; }
+  .btn-secondary { @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white/90 px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-200 hover:bg-white hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50; }
   .input { @apply w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100; }
   .label { @apply mb-1.5 block text-sm font-semibold text-slate-700; }
+  .brand-mark { @apply inline-flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 text-sm font-black text-white shadow-sm; }
+  .section-kicker { @apply text-xs font-black uppercase tracking-[.2em] text-indigo-600; }
+  .section-title { @apply mt-3 text-3xl font-black tracking-[-.04em] text-slate-950 sm:text-4xl; }
+  .section-copy { @apply mt-4 max-w-2xl text-base leading-7 text-slate-600; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
 }
