@@ -1,5 +1,7 @@
 export type MatchStatus = 'new' | 'reviewed' | 'applied' | 'interview' | 'offer' | 'rejected'
 
+export type OpportunityBucket = 'apply_now' | 'consider' | 'skip'
+
 export interface JobPreferences {
   targetRoles: string[]
   locations: string[]
@@ -7,6 +9,18 @@ export interface JobPreferences {
   minSalary?: number
   noticePeriod?: string
   followedCompanies?: string[]
+}
+
+export interface CareerProfileData {
+  headline: string
+  summary: string
+  keywords: string
+  skills: string[]
+  currentTitle: string
+  yearsExperience?: number
+  basedOnMatches: number
+  source?: 'resume' | 'user' | 'ai-assisted'
+  updatedAt?: string
 }
 
 export interface ParsedResume {
@@ -40,10 +54,14 @@ export interface JobRecord {
 export interface ScoreBreakdown {
   semantic: number
   role: number
+  skills: number
+  seniority: number
+  freshness: number
   location: number
   workMode: number
   salary: number
   total: number
+  bucket: OpportunityBucket
 }
 
 export interface TailoredResume {
@@ -58,6 +76,14 @@ export interface AtsReport {
   warnings: string[]
 }
 
+export interface ApplicationPack {
+  recruiterMessage: string
+  referralMessage: string
+  companySummary: string
+  missingRequirements: string[]
+  interviewQuestions: string[]
+}
+
 export interface ApplicationKit {
   whyFit: string[]
   coverLetter: string
@@ -68,4 +94,5 @@ export interface ApplicationKit {
   }>
   tailoredResume: TailoredResume
   atsReport: AtsReport
+  applicationPack: ApplicationPack
 }
