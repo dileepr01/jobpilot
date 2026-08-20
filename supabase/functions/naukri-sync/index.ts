@@ -1,67 +1,30 @@
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts'
 import { createClient } from 'npm:@supabase/supabase-js@2.110.7'
 
-type NaukriCredentials = {
-  username: string
-  password: string
-  profile_id: string | null
-}
-
-type NaukriCookies = {
-  unid: string
-  nkwap: string
-  naukAt: string
-  naukRt: string
-  naukSid: string
-}
-
-type RequestBody = {
-  action?: 'connect' | 'sync' | 'toggle' | 'disconnect' | 'scheduled'
-  username?: string
-  password?: string
-  profileId?: string
-  enabled?: boolean
-  consent?: boolean
-}
-
-type JobPilotProfile = {
-  resume_text?: string | null
-  parsed_resume?: Record<string, unknown> | null
-  career_profile?: Record<string, unknown> | null
-  preferences?: Record<string, unknown> | null
-}
+type Credentials = { username: string; password: string; profile_id: string | null }
+type Cookies = { unid: string; nkwap: string; naukAt: string; naukRt: string; naukSid: string }
+type Body = { action?: 'connect' | 'sync' | 'toggle' | 'disconnect'; username?: string; password?: string; profileId?: string; enabled?: boolean; consent?: boolean }
+type Profile = { parsed_resume?: Record<string, unknown> | null; career_profile?: Record<string, unknown> | null; preferences?: Record<string, unknown> | null }
 
 const LOGIN_URL = 'https://www.naukri.com/central-login-services/v1/login'
 const DASHBOARD_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard'
 const FULL_PROFILE_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v2/users/self?expand_level=4'
 const PROFILE_UPDATE_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v1/users/self/fullprofiles'
+const NKPARAM = 'oFYlsMP9SN/18UTJyWR0J4Far8aGlf/RgiTehgjzAfodyCTha++NVMb+jAOJjH4rULRVnn65HS1K0dD3clyVyQ=='
 
-// Naukri does not publish a supported job-seeker profile-edit API. This mirrors
-// Naukri's current browser flow and can change. JobPilot fails closed on
-// CAPTCHA/MFA/anti-bot challenges and never attempts to bypass them.
-const NAUKRI_NKPARAM =
-  'oFYlsMP9SN/18UTJyWR0J4Far8aGlf/RgiTehgjzAfodyCTha++NVMb+jAOJjH4rULRVnn65HS1K0dD3clyVyQ=='
-
-function getServiceRoleKey() {
+function serviceKey() {
   const legacy = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   if (legacy) return legacy
-
   const raw = Deno.env.get('SUPABASE_SECRET_KEYS')
   if (!raw) throw new Error('Supabase secret key is unavailable')
-
   const parsed = JSON.parse(raw) as Record<string, unknown>
   const key = Object.values(parsed).find((value) => typeof value === 'string')
-  if (typeof key !== 'string' || !key) {
-    throw new Error('Supabase secret key is unavailable')
-  }
+  if (typeof key !== 'string' || !key) throw new Error('Supabase secret key is unavailable')
   return key
 }
 
-function jsonResponse(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json; charset=utf-8' }
-  })
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } })
 }
 
 function cookieValue(raw: string, name: string) {
@@ -69,29 +32,21 @@ function cookieValue(raw: string, name: string) {
   return raw.match(new RegExp(`${escaped}=([^;,\\n]+)`, 'i'))?.[1] || ''
 }
 
-function extractCookies(headers: Headers): NaukriCookies | null {
-  const withGetSetCookie = headers as Headers & { getSetCookie?: () => string[] }
-  const raw = withGetSetCookie.getSetCookie?.().join('\n') || headers.get('set-cookie') || ''
-
-  const cookies: NaukriCookies = {
+function extractCookies(headers: Headers): Cookies | null {
+  const extended = headers as Headers & { getSetCookie?: () => string[] }
+  const raw = extended.getSetCookie?.().join('\n') || headers.get('set-cookie') || ''
+  const cookies: Cookies = {
     unid: cookieValue(raw, 'MYNAUKRI[UNID]'),
     nkwap: cookieValue(raw, 'NKWAP'),
     naukAt: cookieValue(raw, 'nauk_at'),
     naukRt: cookieValue(raw, 'nauk_rt'),
     naukSid: cookieValue(raw, 'nauk_sid')
   }
-
   return cookies.naukAt && cookies.naukSid ? cookies : null
 }
 
-function cookieHeader(cookies: NaukriCookies) {
-  return [
-    `MYNAUKRI[UNID]=${cookies.unid}`,
-    `NKWAP=${cookies.nkwap}`,
-    `nauk_at=${cookies.naukAt}`,
-    `nauk_rt=${cookies.naukRt}`,
-    `nauk_sid=${cookies.naukSid}`
-  ].join('; ')
+function cookieHeader(cookies: Cookies) {
+  return [`MYNAUKRI[UNID]=${cookies.unid}`, `NKWAP=${cookies.nkwap}`, `nauk_at=${cookies.naukAt}`, `nauk_rt=${cookies.naukRt}`, `nauk_sid=${cookies.naukSid}`].join('; ')
 }
 
 const browserHeaders = {
@@ -102,467 +57,195 @@ const browserHeaders = {
   clientid: 'd3skt0p',
   'content-type': 'application/json',
   gid: 'LOCATION,INDUSTRY,EDUCATION,FAREA_ROLE',
-  nkparam: NAUKRI_NKPARAM,
+  nkparam: NKPARAM,
   pragma: 'no-cache',
   systemid: 'jobseeker',
   'x-requested-with': 'XMLHttpRequest',
-  'user-agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36',
   referer: 'https://www.naukri.com/'
 }
 
-function naukriAuthHeaders(cookies: NaukriCookies, systemid = 'Naukri') {
+function authHeaders(cookies: Cookies, systemid = 'Naukri') {
   return {
-    accept: 'application/json',
-    appid: '105',
-    clientid: 'd3skt0p',
-    systemid,
-    authorization: `Bearer ${cookies.naukAt}`,
-    cookie: cookieHeader(cookies),
-    origin: 'https://www.naukri.com',
-    referer: 'https://www.naukri.com/mnjuser/profile',
+    accept: 'application/json', appid: '105', clientid: 'd3skt0p', systemid,
+    authorization: `Bearer ${cookies.naukAt}`, cookie: cookieHeader(cookies),
+    origin: 'https://www.naukri.com', referer: 'https://www.naukri.com/mnjuser/profile',
     'x-requested-with': 'XMLHttpRequest',
-    'user-agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36'
+    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36'
   }
 }
 
-async function loginNaukri(username: string, password: string) {
-  const response = await fetch(LOGIN_URL, {
-    method: 'POST',
-    headers: browserHeaders,
-    body: JSON.stringify({ username, password }),
-    redirect: 'manual'
-  })
-
+async function login(username: string, password: string) {
+  const response = await fetch(LOGIN_URL, { method: 'POST', headers: browserHeaders, body: JSON.stringify({ username, password }), redirect: 'manual' })
   const cookies = extractCookies(response.headers)
   if (response.ok && cookies) return cookies
-
   let message = `Naukri login failed (${response.status}).`
-  if ([401, 403, 406, 429].includes(response.status)) {
-    message += ' Naukri may require a fresh login, CAPTCHA/MFA, or may have changed its browser validation.'
-  }
+  if ([401, 403, 406, 429].includes(response.status)) message += ' Naukri may require a fresh login, CAPTCHA/MFA, or may have changed its browser validation.'
   throw new Error(message)
 }
 
 function findProfileId(value: unknown): string | null {
   if (!value || typeof value !== 'object') return null
-
   if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findProfileId(item)
-      if (found) return found
-    }
+    for (const item of value) { const found = findProfileId(item); if (found) return found }
     return null
   }
-
   const object = value as Record<string, unknown>
   for (const key of ['profileId', 'profile_id', 'profileid']) {
     const candidate = object[key]
-    if (typeof candidate === 'string' || typeof candidate === 'number') {
-      const text = String(candidate).trim()
-      if (text) return text
-    }
+    if (typeof candidate === 'string' || typeof candidate === 'number') { const text = String(candidate).trim(); if (text) return text }
   }
-
-  for (const nested of Object.values(object)) {
-    const found = findProfileId(nested)
-    if (found) return found
-  }
-
+  for (const nested of Object.values(object)) { const found = findProfileId(nested); if (found) return found }
   return null
 }
 
-async function discoverProfileId(cookies: NaukriCookies) {
-  const response = await fetch(DASHBOARD_URL, {
-    headers: naukriAuthHeaders(cookies)
-  })
-
+async function discoverProfileId(cookies: Cookies) {
+  const response = await fetch(DASHBOARD_URL, { headers: authHeaders(cookies) })
   if (!response.ok) return null
-  const payload = await response.json().catch(() => null)
-  return findProfileId(payload)
+  return findProfileId(await response.json().catch(() => null))
 }
 
-async function readNaukriProfile(cookies: NaukriCookies) {
-  const response = await fetch(FULL_PROFILE_URL, {
-    headers: naukriAuthHeaders(cookies)
-  })
-
-  if (!response.ok) {
-    throw new Error(`Naukri profile read failed (${response.status}).`)
-  }
-
+async function readProfile(cookies: Cookies) {
+  const response = await fetch(FULL_PROFILE_URL, { headers: authHeaders(cookies) })
+  if (!response.ok) throw new Error(`Naukri profile read failed (${response.status}).`)
   return response.json().catch(() => ({}))
 }
 
-function findValueByKeys(value: unknown, keys: string[]): unknown {
+function findValue(value: unknown, keys: string[]): unknown {
   if (!value || typeof value !== 'object') return undefined
-
   if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = findValueByKeys(item, keys)
-      if (found !== undefined) return found
-    }
+    for (const item of value) { const found = findValue(item, keys); if (found !== undefined) return found }
     return undefined
   }
-
   const object = value as Record<string, unknown>
-  for (const key of keys) {
-    if (object[key] !== undefined && object[key] !== null) return object[key]
-  }
-
-  for (const nested of Object.values(object)) {
-    const found = findValueByKeys(nested, keys)
-    if (found !== undefined) return found
-  }
-
+  for (const key of keys) if (object[key] !== undefined && object[key] !== null) return object[key]
+  for (const nested of Object.values(object)) { const found = findValue(nested, keys); if (found !== undefined) return found }
   return undefined
 }
 
-function asString(value: unknown) {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-function asStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value
-      .map((item) => {
-        if (typeof item === 'string') return item.trim()
-        if (item && typeof item === 'object') {
-          const object = item as Record<string, unknown>
-          return asString(object.label || object.name || object.skill || object.entitySkill)
-        }
-        return ''
-      })
-      .filter(Boolean)
-  }
-
-  if (typeof value === 'string') {
-    return value.split(',').map((item) => item.trim()).filter(Boolean)
-  }
-
+const text = (value: unknown) => typeof value === 'string' ? value.trim() : ''
+function strings(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => typeof item === 'string' ? item.trim() : item && typeof item === 'object' ? text((item as Record<string, unknown>).label || (item as Record<string, unknown>).name || (item as Record<string, unknown>).skill || (item as Record<string, unknown>).entitySkill) : '').filter(Boolean)
+  if (typeof value === 'string') return value.split(',').map((item) => item.trim()).filter(Boolean)
   return []
 }
 
-function normalizeText(value: string) {
-  return value.replace(/\s+/g, ' ').trim().toLowerCase()
-}
-
-function normalizeSkill(value: string) {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function uniqueCaseInsensitive(values: string[]) {
-  const seen = new Set<string>()
-  const result: string[] = []
-  for (const raw of values) {
-    const value = normalizeSkill(raw)
-    if (!value) continue
-    const key = value.toLowerCase()
-    if (seen.has(key)) continue
-    seen.add(key)
-    result.push(value)
-  }
+function unique(values: string[]) {
+  const seen = new Set<string>(); const result: string[] = []
+  for (const raw of values) { const value = raw.replace(/\s+/g, ' ').trim(); const key = value.toLowerCase(); if (value && !seen.has(key)) { seen.add(key); result.push(value) } }
   return result
 }
 
-function limitSkillsToNaukri(values: string[]) {
-  const result: string[] = []
-  let length = 0
-  for (const value of uniqueCaseInsensitive(values)) {
-    const added = (result.length ? 1 : 0) + value.length
-    if (length + added > 250) break
-    result.push(value)
-    length += added
-  }
+function limitSkills(values: string[]) {
+  const result: string[] = []; let length = 0
+  for (const value of unique(values)) { const added = (result.length ? 1 : 0) + value.length; if (length + added > 250) break; result.push(value); length += added }
   return result
 }
 
-function buildDesiredProfile(profile: JobPilotProfile) {
+function desiredProfile(profile: Profile) {
   const parsed = (profile.parsed_resume || {}) as Record<string, unknown>
   const career = (profile.career_profile || {}) as Record<string, unknown>
   const preferences = (profile.preferences || {}) as Record<string, unknown>
-
-  const parsedSkills = asStringArray(parsed.skills)
-  const explicitCareerSkills = Array.isArray(career.skills)
-    ? asStringArray(career.skills)
-    : []
-  const keywordSkills = asString(career.keywords)
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-
-  // A user-edited Career Profile is authoritative. If the user removes a skill
-  // there, the next Naukri sync removes it too instead of re-adding it from the
-  // uploaded resume. Resume skills are only a fallback for profiles that have
-  // not been explicitly edited yet.
-  const careerIsAuthoritative = asString(career.source) === 'user' || Array.isArray(career.skills)
-  const keySkills = limitSkillsToNaukri(
-    careerIsAuthoritative
-      ? [...explicitCareerSkills, ...keywordSkills]
-      : [...parsedSkills, ...keywordSkills]
-  )
-
-  const parsedTitles = asStringArray(parsed.titles)
-  const targetRoles = asStringArray(preferences.targetRoles)
-  const headline =
-    asString(career.headline) ||
-    asString(career.currentTitle) ||
-    parsedTitles[0] ||
-    targetRoles[0] ||
-    ''
-  const summary = asString(career.summary)
-
-  return {
-    headline: headline.slice(0, 250),
-    summary: summary.slice(0, 3000),
-    keySkills,
-    explicitSkills: careerIsAuthoritative
-  }
+  const explicitSkills = Array.isArray(career.skills) ? strings(career.skills) : []
+  const keywordSkills = text(career.keywords).split(',').map((item) => item.trim()).filter(Boolean)
+  const authoritative = text(career.source) === 'user' || Array.isArray(career.skills)
+  const keySkills = limitSkills(authoritative ? [...explicitSkills, ...keywordSkills] : [...strings(parsed.skills), ...keywordSkills])
+  const headline = text(career.headline) || text(career.currentTitle) || strings(parsed.titles)[0] || strings(preferences.targetRoles)[0] || ''
+  return { headline: headline.slice(0, 250), summary: text(career.summary).slice(0, 3000), keySkills, authoritative }
 }
 
-async function updateNaukriProfile(
-  cookies: NaukriCookies,
-  profileId: string,
-  profileFields: Record<string, unknown>
-) {
+async function updateProfile(cookies: Cookies, profileId: string, fields: Record<string, unknown>) {
   const response = await fetch(PROFILE_UPDATE_URL, {
     method: 'POST',
-    headers: {
-      ...naukriAuthHeaders(cookies),
-      'content-type': 'application/json',
-      'x-http-method-override': 'PUT',
-      referer: 'https://www.naukri.com/mnjuser/profile?action=modalOpen'
-    },
-    body: JSON.stringify({ profile: profileFields, profileId })
+    headers: { ...authHeaders(cookies), 'content-type': 'application/json', 'x-http-method-override': 'PUT', referer: 'https://www.naukri.com/mnjuser/profile?action=modalOpen' },
+    body: JSON.stringify({ profile: fields, profileId })
   })
-
-  if (!response.ok) {
-    throw new Error(`Naukri profile update failed (${response.status}).`)
-  }
+  if (!response.ok) throw new Error(`Naukri profile update failed (${response.status}).`)
 }
 
-async function syncUser(
-  admin: ReturnType<typeof createClient>,
-  userId: string
-) {
-  await admin.rpc('update_naukri_sync_status', {
-    p_user_id: userId,
-    p_status: 'pending',
-    p_error: null,
-    p_profile_id: null,
-    p_synced: false
-  })
-
+async function syncUser(admin: ReturnType<typeof createClient>, userId: string) {
+  await admin.rpc('update_naukri_sync_status', { p_user_id: userId, p_status: 'pending', p_error: null, p_profile_id: null, p_synced: false })
   try {
-    const [{ data: credentials, error: credentialsError }, { data: profile, error: profileError }] =
-      await Promise.all([
-        admin.rpc('get_naukri_sync_credentials', { p_user_id: userId }),
-        admin
-          .from('profiles')
-          .select('resume_text, parsed_resume, career_profile, preferences')
-          .eq('user_id', userId)
-          .single()
-      ])
+    const [credentialResult, profileResult] = await Promise.all([
+      admin.rpc('get_naukri_sync_credentials', { p_user_id: userId }),
+      admin.from('profiles').select('parsed_resume, career_profile, preferences').eq('user_id', userId).single()
+    ])
+    if (credentialResult.error) throw credentialResult.error
+    if (profileResult.error) throw profileResult.error
+    const credential = (credentialResult.data?.[0] || null) as Credentials | null
+    if (!credential?.username || !credential.password) throw new Error('Naukri is not connected.')
 
-    if (credentialsError) throw credentialsError
-    if (profileError) throw profileError
+    const desired = desiredProfile(profileResult.data as Profile)
+    if (!desired.headline && !desired.summary && desired.keySkills.length === 0 && !desired.authoritative) throw new Error('Add Career Profile details before syncing Naukri.')
 
-    const credential = (credentials?.[0] || null) as NaukriCredentials | null
-    if (!credential?.username || !credential.password) {
-      throw new Error('Naukri is not connected.')
-    }
+    const cookies = await login(credential.username, credential.password)
+    const profileId = credential.profile_id || await discoverProfileId(cookies)
+    if (!profileId) throw new Error('JobPilot could not detect your Naukri profile ID. Add the profile ID once and reconnect.')
 
-    const desired = buildDesiredProfile(profile as JobPilotProfile)
-    if (!desired.headline && !desired.summary && desired.keySkills.length === 0 && !desired.explicitSkills) {
-      throw new Error('Add Career Profile details before syncing Naukri.')
-    }
+    const current = await readProfile(cookies)
+    const currentHeadline = text(findValue(current, ['resumeHeadline']))
+    const currentSummary = text(findValue(current, ['profileSummary', 'summary']))
+    const currentSkills = unique(strings(findValue(current, ['keySkills', 'keyskills'])))
+    const desiredSkills = unique(desired.keySkills)
+    const currentKeys = new Set(currentSkills.map((item) => item.toLowerCase()))
+    const desiredKeys = new Set(desiredSkills.map((item) => item.toLowerCase()))
+    const added = desiredSkills.filter((item) => !currentKeys.has(item.toLowerCase()))
+    const removed = currentSkills.filter((item) => !desiredKeys.has(item.toLowerCase()))
 
-    const cookies = await loginNaukri(credential.username, credential.password)
-    const profileId = credential.profile_id || (await discoverProfileId(cookies))
-    if (!profileId) {
-      throw new Error('JobPilot could not detect your Naukri profile ID. Open Naukri Sync and add the profile ID once.')
-    }
+    const fields: Record<string, unknown> = {}; const changedFields: string[] = []
+    const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase()
+    if (desired.headline && normalize(desired.headline) !== normalize(currentHeadline)) { fields.resumeHeadline = desired.headline; changedFields.push('resume headline') }
+    if (desired.summary && normalize(desired.summary) !== normalize(currentSummary)) { fields.profileSummary = desired.summary; changedFields.push('profile summary') }
+    if ((desired.authoritative || desiredSkills.length > 0) && (added.length || removed.length)) { fields.keySkills = desiredSkills.join(','); changedFields.push('key skills') }
+    if (changedFields.length) await updateProfile(cookies, profileId, fields)
 
-    const current = await readNaukriProfile(cookies)
-    const currentHeadline = asString(findValueByKeys(current, ['resumeHeadline']))
-    const currentSummary = asString(findValueByKeys(current, ['profileSummary', 'summary']))
-    const currentSkills = asStringArray(findValueByKeys(current, ['keySkills', 'keyskills']))
-
-    const changedFields: string[] = []
-    const update: Record<string, unknown> = {}
-
-    if (desired.headline && normalizeText(desired.headline) !== normalizeText(currentHeadline)) {
-      update.resumeHeadline = desired.headline
-      changedFields.push('resume headline')
-    }
-
-    if (desired.summary && normalizeText(desired.summary) !== normalizeText(currentSummary)) {
-      update.profileSummary = desired.summary
-      changedFields.push('profile summary')
-    }
-
-    const normalizedCurrent = uniqueCaseInsensitive(currentSkills)
-    const normalizedDesired = uniqueCaseInsensitive(desired.keySkills)
-    const currentMap = new Map(normalizedCurrent.map((item) => [item.toLowerCase(), item]))
-    const desiredMap = new Map(normalizedDesired.map((item) => [item.toLowerCase(), item]))
-    const addedSkills = normalizedDesired.filter((item) => !currentMap.has(item.toLowerCase()))
-    const removedSkills = normalizedCurrent.filter((item) => !desiredMap.has(item.toLowerCase()))
-
-    if (desired.explicitSkills || desired.keySkills.length > 0) {
-      if (addedSkills.length || removedSkills.length) {
-        update.keySkills = desired.keySkills.join(',')
-        changedFields.push('key skills')
-      }
-    }
-
-    if (changedFields.length > 0) {
-      await updateNaukriProfile(cookies, profileId, update)
-    }
-
-    await admin.rpc('update_naukri_sync_status', {
-      p_user_id: userId,
-      p_status: 'connected',
-      p_error: null,
-      p_profile_id: profileId,
-      p_synced: changedFields.length > 0
-    })
-
-    const skillMessage = addedSkills.length || removedSkills.length
-      ? ` Skills: ${addedSkills.length ? `+${addedSkills.join(', ')}` : ''}${addedSkills.length && removedSkills.length ? '; ' : ''}${removedSkills.length ? `-${removedSkills.join(', ')}` : ''}.`
-      : ''
-
-    return {
-      userId,
-      ok: true,
-      changed: changedFields.length > 0,
-      changedFields,
-      skillChanges: { added: addedSkills, removed: removedSkills },
-      message: changedFields.length
-        ? `Updated ${changedFields.join(', ')}.${skillMessage}`
-        : 'Naukri already matches your JobPilot Career Profile; no artificial change was made.'
-    }
+    await admin.rpc('update_naukri_sync_status', { p_user_id: userId, p_status: 'connected', p_error: null, p_profile_id: profileId, p_synced: changedFields.length > 0 })
+    const skillMessage = added.length || removed.length ? ` Skills: ${added.length ? `+${added.join(', ')}` : ''}${added.length && removed.length ? '; ' : ''}${removed.length ? `-${removed.join(', ')}` : ''}.` : ''
+    return { userId, ok: true, changed: changedFields.length > 0, changedFields, skillChanges: { added, removed }, message: changedFields.length ? `Updated ${changedFields.join(', ')}.${skillMessage}` : 'Naukri already matches your JobPilot Career Profile; no artificial change was made.' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const reconnect = /login failed|captcha|mfa|browser validation|not connected/i.test(message)
-
-    await admin.rpc('update_naukri_sync_status', {
-      p_user_id: userId,
-      p_status: reconnect ? 'needs_reconnect' : 'error',
-      p_error: message.slice(0, 1000),
-      p_profile_id: null,
-      p_synced: false
-    })
-
+    await admin.rpc('update_naukri_sync_status', { p_user_id: userId, p_status: reconnect ? 'needs_reconnect' : 'error', p_error: message.slice(0, 1000), p_profile_id: null, p_synced: false })
     return { userId, ok: false, error: message }
   }
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method !== 'POST') return jsonResponse({ error: 'Method not allowed' }, 405)
-
+  if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    if (!supabaseUrl) throw new Error('SUPABASE_URL is unavailable')
-
-    const admin = createClient(supabaseUrl, getServiceRoleKey(), {
-      auth: { persistSession: false, autoRefreshToken: false }
-    })
-
-    const body = (await req.json().catch(() => ({}))) as RequestBody
-    const cronToken = req.headers.get('x-jobpilot-cron')
-
-    // Kept for backwards compatibility while older environments remove their
-    // cron entry. New deployments are event-driven and do not schedule this.
-    if (cronToken) {
-      const { data: valid, error } = await admin.rpc('verify_naukri_cron_token', {
-        p_token: cronToken
-      })
-      if (error || valid !== true) return jsonResponse({ error: 'Unauthorized' }, 401)
-
-      const { data: connections, error: connectionError } = await admin
-        .from('naukri_connections')
-        .select('user_id')
-        .eq('enabled', true)
-        .in('status', ['pending', 'connected', 'error'])
-        .limit(100)
-
-      if (connectionError) throw connectionError
-      const userIds = (connections || []).map((row: { user_id: string }) => row.user_id)
-      const results = []
-      for (const userId of userIds) results.push(await syncUser(admin, userId))
-
-      const successful = results.filter((result) => result.ok).length
-      return jsonResponse({
-        ok: true,
-        attempted: results.length,
-        successful,
-        failed: results.length - successful,
-        results
-      })
-    }
-
+    const url = Deno.env.get('SUPABASE_URL')
+    if (!url) throw new Error('SUPABASE_URL is unavailable')
+    const admin = createClient(url, serviceKey(), { auth: { persistSession: false, autoRefreshToken: false } })
     const authHeader = req.headers.get('authorization') || ''
     const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-    if (!token) return jsonResponse({ error: 'Unauthorized' }, 401)
-
+    if (!token) return json({ error: 'Unauthorized' }, 401)
     const { data: { user }, error: userError } = await admin.auth.getUser(token)
-    if (userError || !user) return jsonResponse({ error: 'Unauthorized' }, 401)
+    if (userError || !user) return json({ error: 'Unauthorized' }, 401)
 
+    const body = (await req.json().catch(() => ({}))) as Body
     const action = body.action || 'sync'
-
     if (action === 'connect') {
-      const username = body.username?.trim() || ''
-      const password = body.password || ''
-      const profileId = body.profileId?.trim() || null
-
-      if (body.consent !== true) {
-        return jsonResponse({ error: 'Consent is required for Naukri profile sync.' }, 400)
-      }
-      if (username.length < 3 || password.length < 4) {
-        return jsonResponse({ error: 'Naukri username and password are required.' }, 400)
-      }
-
-      const { error } = await admin.rpc('save_naukri_connection_for_user', {
-        p_user_id: user.id,
-        p_username: username,
-        p_password: password,
-        p_profile_id: profileId
-      })
+      const username = body.username?.trim() || ''; const password = body.password || ''; const profileId = body.profileId?.trim() || null
+      if (body.consent !== true) return json({ error: 'Consent is required for Naukri profile sync.' }, 400)
+      if (username.length < 3 || password.length < 4) return json({ error: 'Naukri username and password are required.' }, 400)
+      const { error } = await admin.rpc('save_naukri_connection_for_user', { p_user_id: user.id, p_username: username, p_password: password, p_profile_id: profileId })
       if (error) throw error
-
-      const result = await syncUser(admin, user.id)
-      return jsonResponse({ ok: true, results: [result] })
+      return json({ ok: true, results: [await syncUser(admin, user.id)] })
     }
-
     if (action === 'toggle') {
-      if (typeof body.enabled !== 'boolean') {
-        return jsonResponse({ error: 'enabled must be true or false.' }, 400)
-      }
-
-      const { error } = await admin.rpc('set_naukri_auto_refresh_for_user', {
-        p_user_id: user.id,
-        p_enabled: body.enabled
-      })
+      if (typeof body.enabled !== 'boolean') return json({ error: 'enabled must be true or false.' }, 400)
+      const { error } = await admin.rpc('set_naukri_auto_refresh_for_user', { p_user_id: user.id, p_enabled: body.enabled })
       if (error) throw error
-      return jsonResponse({ ok: true })
+      return json({ ok: true })
     }
-
     if (action === 'disconnect') {
-      const { error } = await admin.rpc('disconnect_naukri_for_user', {
-        p_user_id: user.id
-      })
+      const { error } = await admin.rpc('disconnect_naukri_for_user', { p_user_id: user.id })
       if (error) throw error
-      return jsonResponse({ ok: true })
+      return json({ ok: true })
     }
-
-    const result = await syncUser(admin, user.id)
-    return jsonResponse({ ok: true, results: [result] })
+    return json({ ok: true, results: [await syncUser(admin, user.id)] })
   } catch (error) {
     console.error('[naukri-sync]', error)
-    return jsonResponse(
-      { error: error instanceof Error ? error.message : 'Naukri sync failed' },
-      500
-    )
+    return json({ error: error instanceof Error ? error.message : 'Naukri sync failed' }, 500)
   }
 })
