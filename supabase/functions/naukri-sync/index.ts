@@ -93,7 +93,7 @@ function findProfileId(value: unknown): string | null {
   const object = value as Record<string, unknown>
   for (const key of ['profileId', 'profile_id', 'profileid']) {
     const candidate = object[key]
-    if (typeof candidate === 'string' || typeof candidate === 'number') { const text = String(candidate).trim(); if (text) return text }
+    if (typeof candidate === 'string' || typeof candidate === 'number') { const found = String(candidate).trim(); if (found) return found }
   }
   for (const nested of Object.values(object)) { const found = findProfileId(nested); if (found) return found }
   return null
@@ -146,10 +146,10 @@ function desiredProfile(profile: Profile) {
   const parsed = (profile.parsed_resume || {}) as Record<string, unknown>
   const career = (profile.career_profile || {}) as Record<string, unknown>
   const preferences = (profile.preferences || {}) as Record<string, unknown>
+  const authoritative = text(career.source) === 'user'
   const explicitSkills = Array.isArray(career.skills) ? strings(career.skills) : []
   const keywordSkills = text(career.keywords).split(',').map((item) => item.trim()).filter(Boolean)
-  const authoritative = text(career.source) === 'user' || Array.isArray(career.skills)
-  const keySkills = limitSkills(authoritative ? [...explicitSkills, ...keywordSkills] : [...strings(parsed.skills), ...keywordSkills])
+  const keySkills = authoritative ? limitSkills([...explicitSkills, ...keywordSkills]) : []
   const headline = text(career.headline) || text(career.currentTitle) || strings(parsed.titles)[0] || strings(preferences.targetRoles)[0] || ''
   return { headline: headline.slice(0, 250), summary: text(career.summary).slice(0, 3000), keySkills, authoritative }
 }
@@ -176,11 +176,21 @@ async function syncUser(admin: ReturnType<typeof createClient>, userId: string) 
     if (!credential?.username || !credential.password) throw new Error('Naukri is not connected.')
 
     const desired = desiredProfile(profileResult.data as Profile)
-    if (!desired.headline && !desired.summary && desired.keySkills.length === 0 && !desired.authoritative) throw new Error('Add Career Profile details before syncing Naukri.')
-
     const cookies = await login(credential.username, credential.password)
     const profileId = credential.profile_id || await discoverProfileId(cookies)
     if (!profileId) throw new Error('JobPilot could not detect your Naukri profile ID. Add the profile ID once and reconnect.')
+
+    if (!desired.authoritative) {
+      await admin.rpc('update_naukri_sync_status', { p_user_id: userId, p_status: 'connected', p_error: null, p_profile_id: profileId, p_synced: false })
+      return {
+        userId,
+        ok: true,
+        changed: false,
+        changedFields: [],
+        skillChanges: { added: [], removed: [] },
+        message: 'Naukri is connected. Save your verified JobPilot Career Profile before any Naukri fields are changed.'
+      }
+    }
 
     const current = await readProfile(cookies)
     const currentHeadline = text(findValue(current, ['resumeHeadline']))
@@ -196,12 +206,12 @@ async function syncUser(admin: ReturnType<typeof createClient>, userId: string) 
     const normalize = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase()
     if (desired.headline && normalize(desired.headline) !== normalize(currentHeadline)) { fields.resumeHeadline = desired.headline; changedFields.push('resume headline') }
     if (desired.summary && normalize(desired.summary) !== normalize(currentSummary)) { fields.profileSummary = desired.summary; changedFields.push('profile summary') }
-    if ((desired.authoritative || desiredSkills.length > 0) && (added.length || removed.length)) { fields.keySkills = desiredSkills.join(','); changedFields.push('key skills') }
+    if (added.length || removed.length) { fields.keySkills = desiredSkills.join(','); changedFields.push('key skills') }
     if (changedFields.length) await updateProfile(cookies, profileId, fields)
 
     await admin.rpc('update_naukri_sync_status', { p_user_id: userId, p_status: 'connected', p_error: null, p_profile_id: profileId, p_synced: changedFields.length > 0 })
     const skillMessage = added.length || removed.length ? ` Skills: ${added.length ? `+${added.join(', ')}` : ''}${added.length && removed.length ? '; ' : ''}${removed.length ? `-${removed.join(', ')}` : ''}.` : ''
-    return { userId, ok: true, changed: changedFields.length > 0, changedFields, skillChanges: { added, removed }, message: changedFields.length ? `Updated ${changedFields.join(', ')}.${skillMessage}` : 'Naukri already matches your JobPilot Career Profile; no artificial change was made.' }
+    return { userId, ok: true, changed: changedFields.length > 0, changedFields, skillChanges: { added, removed }, message: changedFields.length ? `Updated ${changedFields.join(', ')}.${skillMessage}` : 'Naukri already matches your verified JobPilot Career Profile; no artificial change was made.' }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const reconnect = /login failed|captcha|mfa|browser validation|not connected/i.test(message)
