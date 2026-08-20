@@ -10,18 +10,16 @@ function safeNextPath(value: string | null) {
 }
 
 type SocialProvider = 'google' | 'azure' | 'linkedin_oidc'
-
 type ProviderState = Record<SocialProvider, boolean>
 
 const socialProviders: Array<{
   provider: SocialProvider
   label: string
   mark: string
-  settingsKey: string
 }> = [
-  { provider: 'google', label: 'Google', mark: 'G', settingsKey: 'google' },
-  { provider: 'azure', label: 'Microsoft', mark: 'M', settingsKey: 'azure' },
-  { provider: 'linkedin_oidc', label: 'LinkedIn', mark: 'in', settingsKey: 'linkedin_oidc' }
+  { provider: 'google', label: 'Google', mark: 'G' },
+  { provider: 'azure', label: 'Microsoft', mark: 'M' },
+  { provider: 'linkedin_oidc', label: 'LinkedIn', mark: 'in' }
 ]
 
 const emptyProviders: ProviderState = {
@@ -39,7 +37,6 @@ export function AuthForm() {
   const [loading, setLoading] = useState(false)
   const [socialLoading, setSocialLoading] = useState<SocialProvider | null>(null)
   const [providerState, setProviderState] = useState<ProviderState>(emptyProviders)
-  const [providersChecked, setProvidersChecked] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -55,10 +52,7 @@ export function AuthForm() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 
-    if (!url || !key) {
-      setProvidersChecked(true)
-      return
-    }
+    if (!url || !key) return
 
     let cancelled = false
 
@@ -75,9 +69,6 @@ export function AuthForm() {
         })
       })
       .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setProvidersChecked(true)
-      })
 
     return () => { cancelled = true }
   }, [])
@@ -282,12 +273,6 @@ export function AuthForm() {
       >
         {showPassword ? 'Use a secure email link instead' : mode === 'signin' ? 'Use password instead' : 'Create account with a password instead'}
       </button>
-
-      {providersChecked && enabledSocial.length === 0 && (
-        <p className="mt-5 border-t border-slate-100 pt-4 text-center text-xs leading-5 text-slate-400">
-          Social sign-in will appear here automatically once its provider credentials are enabled. Email sign-in is available now.
-        </p>
-      )}
 
       <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">
         By continuing, you agree to use JobPilot responsibly. JobPilot never applies to a role without your action.
