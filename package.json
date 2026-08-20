@@ -13,7 +13,6 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "jobs:daily": "tsx scripts/daily-jobs.ts",
     "suggestions:weekly": "tsx scripts/weekly-profile-suggestions.ts"
   },
   "dependencies": {
