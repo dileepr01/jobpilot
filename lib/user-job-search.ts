@@ -1,5 +1,5 @@
 import pLimit from 'p-limit'
-import { createAdminClient } from '@/lib/supabase/admin'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { fetchAllJobSources } from '@/lib/job-sources'
 import type { DiscoveredJob, FollowedSource } from '@/lib/job-sources/types'
 import { embedText } from '@/lib/hf'
@@ -68,36 +68,13 @@ function selectBalancedJobs(jobs: DiscoveredJob[]) {
 }
 
 async function embeddingFor(text: string) {
-  const admin = createAdminClient()
-  const env = getServerEnv()
-  const textHash = hashText(text)
-
-  const { data: cached } = await admin
-    .from('embedding_cache')
-    .select('embedding')
-    .eq('text_hash', textHash)
-    .eq('model', env.HF_EMBEDDING_MODEL)
-    .maybeSingle()
-
-  const cachedVector = parseVector(cached?.embedding)
-  if (cachedVector?.length === 384) return cachedVector
-
-  const embedding = await embedText(text)
-  const { error } = await admin.from('embedding_cache').upsert({
-    text_hash: textHash,
-    model: env.HF_EMBEDDING_MODEL,
-    embedding
-  })
-
-  if (error) console.error('[embedding-cache]', error.message)
-  return embedding
+  return embedText(text)
 }
 
-async function storeJob(job: DiscoveredJob) {
-  const admin = createAdminClient()
+async function storeJob(supabase: SupabaseClient, job: DiscoveredJob) {
   const descriptionHash = hashText(job.description)
 
-  const { data: existing } = await admin
+  const { data: existing } = await supabase
     .from('jobs')
     .select('id, description_hash, embedding')
     .eq('source', job.source)
@@ -114,42 +91,34 @@ async function storeJob(job: DiscoveredJob) {
         `${job.title}\n${job.company}\n${job.location || ''}\n${job.description}`
       )
 
-  const payload = {
-    source: job.source,
-    external_id: job.externalId,
-    external_url: job.externalUrl,
-    title: job.title,
-    company: job.company,
-    location: job.location || null,
-    work_mode: job.workMode || null,
-    salary_min: job.salaryMin || null,
-    salary_max: job.salaryMax || null,
-    salary_currency: job.salaryCurrency || null,
-    description: job.description,
-    description_hash: descriptionHash,
-    embedding,
-    posted_at: safeDate(job.postedAt),
-    last_seen_at: new Date().toISOString(),
-    metadata: job.metadata || {}
-  }
-
-  const { data, error } = await admin
-    .from('jobs')
-    .upsert(payload, { onConflict: 'source,external_id' })
-    .select('id')
-    .single()
+  const { data, error } = await supabase.rpc('upsert_job_for_search', {
+    p_source: job.source,
+    p_external_id: job.externalId,
+    p_external_url: job.externalUrl,
+    p_title: job.title,
+    p_company: job.company,
+    p_location: job.location || null,
+    p_work_mode: job.workMode || null,
+    p_salary_min: job.salaryMin || null,
+    p_salary_max: job.salaryMax || null,
+    p_salary_currency: job.salaryCurrency || null,
+    p_description: job.description,
+    p_description_hash: descriptionHash,
+    p_embedding: embedding ? JSON.stringify(embedding) : null,
+    p_posted_at: safeDate(job.postedAt),
+    p_metadata: job.metadata || {}
+  })
 
   if (error) {
     console.error('[store-job]', job.source, job.externalId, error.message)
     return null
   }
 
-  return data.id as string
+  return data as string
 }
 
-async function enforceCooldown(userId: string) {
-  const admin = createAdminClient()
-  const { data: recent } = await admin
+async function enforceCooldown(supabase: SupabaseClient, userId: string) {
+  const { data: recent, error } = await supabase
     .from('job_search_runs')
     .select('started_at')
     .eq('user_id', userId)
@@ -157,6 +126,7 @@ async function enforceCooldown(userId: string) {
     .limit(1)
     .maybeSingle()
 
+  if (error) throw error
   if (!recent?.started_at) return
 
   const elapsed = Date.now() - new Date(recent.started_at).getTime()
@@ -248,13 +218,13 @@ async function sendSearchNotifications(
 }
 
 export async function searchAndMatchForUser(
+  supabase: SupabaseClient,
   userId: string,
   trigger: JobSearchTrigger = 'manual'
 ) {
-  const admin = createAdminClient()
-  await enforceCooldown(userId)
+  await enforceCooldown(supabase, userId)
 
-  const { data: run, error: runError } = await admin
+  const { data: run, error: runError } = await supabase
     .from('job_search_runs')
     .insert({ user_id: userId, trigger })
     .select('id')
@@ -264,14 +234,14 @@ export async function searchAndMatchForUser(
 
   try {
     const [profileResult, sourcesResult] = await Promise.all([
-      admin
+      supabase
         .from('profiles')
         .select(
           'preferences, resume_embedding, email_digest_enabled, telegram_enabled, telegram_chat_id'
         )
         .eq('user_id', userId)
         .single(),
-      admin
+      supabase
         .from('job_sources')
         .select('source_type, identifier, feed_url')
         .eq('user_id', userId)
@@ -310,11 +280,11 @@ export async function searchAndMatchForUser(
 
     const limit = pLimit(4)
     const storedIds = await Promise.all(
-      selected.map((job) => limit(() => storeJob(job)))
+      selected.map((job) => limit(() => storeJob(supabase, job)))
     )
     const stored = storedIds.filter(Boolean).length
 
-    const { data: candidates, error: candidateError } = await admin.rpc(
+    const { data: candidates, error: candidateError } = await supabase.rpc(
       'match_jobs_for_profile',
       { p_user_id: userId, p_limit: 250 }
     )
@@ -332,7 +302,7 @@ export async function searchAndMatchForUser(
     }> = []
 
     if (jobIds.length) {
-      const { data: jobs, error: jobsError } = await admin
+      const { data: jobs, error: jobsError } = await supabase
         .from('jobs')
         .select('*')
         .in('id', jobIds)
@@ -367,7 +337,7 @@ export async function searchAndMatchForUser(
         .slice(0, 100)
 
       if (scored.length) {
-        const { error: matchError } = await admin
+        const { error: matchError } = await supabase
           .from('matches')
           .upsert(
             scored.map(({ job, breakdown }) => ({
@@ -395,7 +365,7 @@ export async function searchAndMatchForUser(
       sources: sourceCounts
     }
 
-    await admin
+    const { error: completeError } = await supabase
       .from('job_search_runs')
       .update({
         status: 'completed',
@@ -404,13 +374,15 @@ export async function searchAndMatchForUser(
       })
       .eq('id', run.id)
 
+    if (completeError) throw completeError
+
     await sendSearchNotifications(userId, profile, scored)
 
     return metrics
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
 
-    await admin
+    const { error: updateError } = await supabase
       .from('job_search_runs')
       .update({
         status: 'failed',
@@ -418,6 +390,10 @@ export async function searchAndMatchForUser(
         error_message: message
       })
       .eq('id', run.id)
+
+    if (updateError) {
+      console.error('[job-search-run]', updateError.message)
+    }
 
     throw error
   }
