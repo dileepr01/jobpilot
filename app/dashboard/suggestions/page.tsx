@@ -70,7 +70,7 @@ export default async function SuggestionsPage() {
       <p className="text-sm font-bold text-indigo-600">Career intelligence</p>
       <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Your JobPilot Career Profile</h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-        JobPilot keeps this profile current using your resume, target preferences and strongest matched roles. Naukri Auto Refresh can optionally keep your Naukri resume fresh too; LinkedIn remains manual.
+        JobPilot keeps this profile current using your resume, target preferences and strongest matched roles. Naukri Auto Tune-up can optionally keep your Naukri headline and key skills aligned too; LinkedIn remains manual.
       </p>
 
       <section className="mt-7 rounded-[1.75rem] border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-5 sm:p-7">
@@ -122,7 +122,7 @@ export default async function SuggestionsPage() {
         <p className="text-xs font-black uppercase tracking-[.15em] text-slate-400">External profiles</p>
         <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">LinkedIn stays under your control</h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          JobPilot will not automate LinkedIn edits. Use your JobPilot headline, summary and keywords as suggestions, then choose what you want to copy to LinkedIn. Naukri can be refreshed automatically using the opt-in connection above.
+          JobPilot will not automate LinkedIn edits. Use your JobPilot headline, summary and keywords as suggestions, then choose what you want to copy to LinkedIn. Naukri can be checked daily and updated only when the headline or resume-supported key skills genuinely differ.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <a className="btn-secondary" href="https://www.linkedin.com/in/me/edit/top-card/" target="_blank" rel="noreferrer">Open LinkedIn ↗</a>
