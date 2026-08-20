@@ -7,7 +7,7 @@ import { normalizeResumeForExport } from '@/lib/resume-documents'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-export async function POST(_: Request, { params }: { params: { id: string } }) {
+export async function POST(request: Request, { params }: { params: { id: string } }) {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -42,12 +42,15 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
     description: string
   }
 
-  const kit = await generateApplicationKit({
-    resumeText: profile.resume_text,
-    jobTitle: jobRelation.title,
-    company: jobRelation.company,
-    jobDescription: jobRelation.description
-  })
+  const kit = await generateApplicationKit(
+    {
+      resumeText: profile.resume_text,
+      jobTitle: jobRelation.title,
+      company: jobRelation.company,
+      jobDescription: jobRelation.description
+    },
+    { gatewayToken: request.headers.get('x-vercel-oidc-token') }
+  )
 
   kit.tailoredResume.content = normalizeResumeForExport(
     kit.tailoredResume.content
