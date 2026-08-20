@@ -17,7 +17,12 @@ const settingsSchema = z.object({
   enabled: z.boolean()
 })
 
-async function authenticatedClient() {
+type EdgePayload = {
+  error?: string
+  results?: Array<{ ok?: boolean; error?: string }>
+}
+
+async function authenticatedSession() {
   const supabase = createClient()
   const {
     data: { user },
@@ -31,10 +36,13 @@ async function authenticatedClient() {
   } = await supabase.auth.getSession()
 
   if (!session?.access_token) return null
-  return { supabase, user, accessToken: session.access_token }
+  return { accessToken: session.access_token }
 }
 
-async function invokeSync(accessToken: string) {
+async function invokeNaukri(
+  accessToken: string,
+  body: Record<string, unknown>
+) {
   const { url } = getPublicEnv()
   const response = await fetch(`${url}/functions/v1/naukri-sync`, {
     method: 'POST',
@@ -42,14 +50,11 @@ async function invokeSync(accessToken: string) {
       'content-type': 'application/json',
       authorization: `Bearer ${accessToken}`
     },
-    body: JSON.stringify({ mode: 'manual' }),
+    body: JSON.stringify(body),
     cache: 'no-store'
   })
 
-  const payload = (await response.json().catch(() => ({}))) as {
-    error?: string
-    results?: Array<{ ok?: boolean; error?: string }>
-  }
+  const payload = (await response.json().catch(() => ({}))) as EdgePayload
 
   if (!response.ok) {
     throw new Error(payload.error || 'Could not reach the Naukri sync service.')
@@ -60,19 +65,17 @@ async function invokeSync(accessToken: string) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await authenticatedClient()
+    const auth = await authenticatedSession()
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = connectSchema.parse(await request.json())
-    const { error } = await auth.supabase.rpc('save_naukri_connection', {
-      p_username: body.username,
-      p_password: body.password,
-      p_profile_id: body.profileId || null
+    const sync = await invokeNaukri(auth.accessToken, {
+      action: 'connect',
+      username: body.username,
+      password: body.password,
+      profileId: body.profileId || null,
+      consent: body.consent
     })
-
-    if (error) throw error
-
-    const sync = await invokeSync(auth.accessToken)
     const first = sync.results?.[0]
 
     return NextResponse.json({
@@ -88,10 +91,10 @@ export async function POST(request: Request) {
 
 export async function PUT() {
   try {
-    const auth = await authenticatedClient()
+    const auth = await authenticatedSession()
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const sync = await invokeSync(auth.accessToken)
+    const sync = await invokeNaukri(auth.accessToken, { action: 'sync' })
     const first = sync.results?.[0]
 
     if (first && first.ok === false) {
@@ -110,15 +113,15 @@ export async function PUT() {
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await authenticatedClient()
+    const auth = await authenticatedSession()
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = settingsSchema.parse(await request.json())
-    const { error } = await auth.supabase.rpc('set_naukri_auto_refresh', {
-      p_enabled: body.enabled
+    await invokeNaukri(auth.accessToken, {
+      action: 'toggle',
+      enabled: body.enabled
     })
 
-    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not update Naukri Auto Refresh.'
@@ -128,12 +131,10 @@ export async function PATCH(request: Request) {
 
 export async function DELETE() {
   try {
-    const auth = await authenticatedClient()
+    const auth = await authenticatedSession()
     if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { error } = await auth.supabase.rpc('disconnect_naukri')
-    if (error) throw error
-
+    await invokeNaukri(auth.accessToken, { action: 'disconnect' })
     return NextResponse.json({ ok: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Could not disconnect Naukri.'
