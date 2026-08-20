@@ -15,13 +15,22 @@ type NaukriCookies = {
   naukSid: string
 }
 
+type RequestBody = {
+  action?: 'connect' | 'sync' | 'toggle' | 'disconnect' | 'scheduled'
+  username?: string
+  password?: string
+  profileId?: string
+  enabled?: boolean
+  consent?: boolean
+}
+
 const LOGIN_URL = 'https://www.naukri.com/central-login-services/v1/login'
 const PROFILE_LIST_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/profiles'
 const FILE_UPLOAD_URL = 'https://filevalidation.naukri.com/file'
 
-// Naukri does not publish a job-seeker profile editing API. This token/header
-// combination mirrors Naukri's browser flow and may change. We fail closed if
-// Naukri presents an anti-bot/MFA challenge; JobPilot never attempts to bypass it.
+// Naukri does not publish a job-seeker profile editing API. This header mirrors
+// Naukri's current browser flow and may change. We fail closed on anti-bot/MFA
+// challenges and never try to bypass them.
 const NAUKRI_NKPARAM =
   'oFYlsMP9SN/18UTJyWR0J4Far8aGlf/RgiTehgjzAfodyCTha++NVMb+jAOJjH4rULRVnn65HS1K0dD3clyVyQ=='
 
@@ -313,8 +322,8 @@ Deno.serve(async (req: Request) => {
       auth: { persistSession: false, autoRefreshToken: false }
     })
 
+    const body = (await req.json().catch(() => ({}))) as RequestBody
     const cronToken = req.headers.get('x-jobpilot-cron')
-    let userIds: string[] = []
 
     if (cronToken) {
       const { data: valid, error } = await admin.rpc('verify_naukri_cron_token', {
@@ -330,30 +339,76 @@ Deno.serve(async (req: Request) => {
         .limit(100)
 
       if (connectionError) throw connectionError
-      userIds = (connections || []).map((row: { user_id: string }) => row.user_id)
-    } else {
-      const authHeader = req.headers.get('authorization') || ''
-      const token = authHeader.replace(/^Bearer\s+/i, '').trim()
-      if (!token) return jsonResponse({ error: 'Unauthorized' }, 401)
+      const userIds = (connections || []).map((row: { user_id: string }) => row.user_id)
+      const results = []
+      for (const userId of userIds) results.push(await syncUser(admin, userId))
 
-      const { data: { user }, error: userError } = await admin.auth.getUser(token)
-      if (userError || !user) return jsonResponse({ error: 'Unauthorized' }, 401)
-      userIds = [user.id]
+      const successful = results.filter((result) => result.ok).length
+      return jsonResponse({
+        ok: true,
+        attempted: results.length,
+        successful,
+        failed: results.length - successful,
+        results
+      })
     }
 
-    const results = []
-    for (const userId of userIds) {
-      results.push(await syncUser(admin, userId))
+    const authHeader = req.headers.get('authorization') || ''
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim()
+    if (!token) return jsonResponse({ error: 'Unauthorized' }, 401)
+
+    const { data: { user }, error: userError } = await admin.auth.getUser(token)
+    if (userError || !user) return jsonResponse({ error: 'Unauthorized' }, 401)
+
+    const action = body.action || 'sync'
+
+    if (action === 'connect') {
+      const username = body.username?.trim() || ''
+      const password = body.password || ''
+      const profileId = body.profileId?.trim() || null
+
+      if (body.consent !== true) {
+        return jsonResponse({ error: 'Consent is required for Naukri Auto Refresh.' }, 400)
+      }
+      if (username.length < 3 || password.length < 4) {
+        return jsonResponse({ error: 'Naukri username and password are required.' }, 400)
+      }
+
+      const { error } = await admin.rpc('save_naukri_connection_for_user', {
+        p_user_id: user.id,
+        p_username: username,
+        p_password: password,
+        p_profile_id: profileId
+      })
+      if (error) throw error
+
+      const result = await syncUser(admin, user.id)
+      return jsonResponse({ ok: true, results: [result] })
     }
 
-    const successful = results.filter((result) => result.ok).length
-    return jsonResponse({
-      ok: true,
-      attempted: results.length,
-      successful,
-      failed: results.length - successful,
-      results
-    })
+    if (action === 'toggle') {
+      if (typeof body.enabled !== 'boolean') {
+        return jsonResponse({ error: 'enabled must be true or false.' }, 400)
+      }
+
+      const { error } = await admin.rpc('set_naukri_auto_refresh_for_user', {
+        p_user_id: user.id,
+        p_enabled: body.enabled
+      })
+      if (error) throw error
+      return jsonResponse({ ok: true })
+    }
+
+    if (action === 'disconnect') {
+      const { error } = await admin.rpc('disconnect_naukri_for_user', {
+        p_user_id: user.id
+      })
+      if (error) throw error
+      return jsonResponse({ ok: true })
+    }
+
+    const result = await syncUser(admin, user.id)
+    return jsonResponse({ ok: true, results: [result] })
   } catch (error) {
     console.error('[naukri-sync]', error)
     return jsonResponse(
