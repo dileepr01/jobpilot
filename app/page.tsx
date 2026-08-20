@@ -7,9 +7,9 @@ const pillars = [
   ['Apply stronger', 'Create a role-specific resume, keep the application context, and track what happens next.']
 ]
 
-export default function HomePage() {
-  const videoUrl = process.env.NEXT_PUBLIC_JOBPILOT_DEMO_VIDEO_URL
+const demoVideoUrl = 'https://resource2.heygen.ai/aws_pacific/avatar_tmp/014bf5fa519a45ceb89f17b0e58060e2/v12d3a58a8c3d468a907bf1c8599048a7/caption_931e9f936c3a4633bb1ea174058f14ad.mp4'
 
+export default function HomePage() {
   return (
     <main className="min-h-screen overflow-hidden bg-slate-50">
       <header className="border-b border-slate-200/70 bg-white/85 backdrop-blur-xl">
@@ -112,7 +112,7 @@ export default function HomePage() {
               <h2 className="section-title">Watch it or explore it.</h2>
               <p className="section-copy">Choose the quick video when you want the overview, or open the interactive walkthrough when you want to move step by step.</p>
             </div>
-            <HowItWorksChoices videoUrl={videoUrl} />
+            <HowItWorksChoices videoUrl={demoVideoUrl} />
           </div>
         </div>
       </section>
