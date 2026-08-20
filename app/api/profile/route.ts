@@ -42,18 +42,57 @@ const bodySchema = z.object({
   telegramChatId: z.string().trim().max(200).nullable().optional()
 })
 
-function stable(value: unknown) {
-  return JSON.stringify(value, Object.keys((value || {}) as object).sort())
+function uniqueStrings(values: string[]) {
+  const seen = new Set<string>()
+  return values
+    .map((value) => value.trim())
+    .filter((value) => {
+      const key = value.toLowerCase()
+      if (!key || seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
 }
 
-function uniqueSkills(values: string[]) {
-  const seen = new Set<string>()
-  return values.filter((value) => {
-    const key = value.trim().toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
+function normalizedStrings(values: string[] | undefined) {
+  return uniqueStrings(values || []).map((value) => value.toLowerCase()).sort()
+}
+
+function sameStrings(left: string[] | undefined, right: string[] | undefined) {
+  return JSON.stringify(normalizedStrings(left)) === JSON.stringify(normalizedStrings(right))
+}
+
+function sameText(left: unknown, right: unknown) {
+  return String(left ?? '').trim() === String(right ?? '').trim()
+}
+
+function sameNumber(left: unknown, right: unknown) {
+  const leftNumber = left === undefined || left === null || left === '' ? undefined : Number(left)
+  const rightNumber = right === undefined || right === null || right === '' ? undefined : Number(right)
+  return leftNumber === rightNumber
+}
+
+function changedFields(
+  previousPreferences: JobPreferences,
+  nextPreferences: JobPreferences,
+  previousCareer: Partial<CareerProfileData>,
+  nextCareer: CareerProfileData
+) {
+  const changes: string[] = []
+
+  if (!sameText(previousCareer.headline, nextCareer.headline)) changes.push('headline')
+  if (!sameText(previousCareer.summary, nextCareer.summary)) changes.push('summary')
+  if (!sameStrings(previousCareer.skills, nextCareer.skills)) changes.push('skills')
+  if (!sameText(previousCareer.currentTitle, nextCareer.currentTitle)) changes.push('current_title')
+  if (!sameNumber(previousCareer.yearsExperience, nextCareer.yearsExperience)) changes.push('years_experience')
+  if (!sameStrings(previousPreferences.targetRoles, nextPreferences.targetRoles)) changes.push('target_roles')
+  if (!sameStrings(previousPreferences.locations, nextPreferences.locations)) changes.push('locations')
+  if (!sameStrings(previousPreferences.workModes, nextPreferences.workModes)) changes.push('work_modes')
+  if (!sameNumber(previousPreferences.minSalary, nextPreferences.minSalary)) changes.push('minimum_salary')
+  if (!sameText(previousPreferences.noticePeriod, nextPreferences.noticePeriod)) changes.push('notice_period')
+  if (!sameStrings(previousPreferences.followedCompanies, nextPreferences.followedCompanies)) changes.push('followed_companies')
+
+  return changes
 }
 
 export async function POST(request: Request) {
@@ -79,11 +118,12 @@ export async function POST(request: Request) {
 
     const previousPreferences = (existing.preferences || {}) as JobPreferences
     const previousCareer = (existing.career_profile || {}) as Partial<CareerProfileData>
+    const skills = uniqueStrings(body.careerProfile.skills)
     const careerProfile: CareerProfileData = {
       headline: body.careerProfile.headline,
       summary: body.careerProfile.summary,
-      keywords: uniqueSkills(body.careerProfile.skills).join(', '),
-      skills: uniqueSkills(body.careerProfile.skills),
+      keywords: skills.join(', '),
+      skills,
       currentTitle: body.careerProfile.currentTitle,
       yearsExperience: body.careerProfile.yearsExperience,
       basedOnMatches: previousCareer.basedOnMatches || 0,
@@ -91,21 +131,13 @@ export async function POST(request: Request) {
       updatedAt: new Date().toISOString()
     }
 
-    const matchingChanged =
-      stable(previousPreferences) !== stable(body.preferences) ||
-      stable({
-        headline: previousCareer.headline || '',
-        summary: previousCareer.summary || '',
-        skills: previousCareer.skills || [],
-        currentTitle: previousCareer.currentTitle || '',
-        yearsExperience: previousCareer.yearsExperience
-      }) !== stable({
-        headline: careerProfile.headline,
-        summary: careerProfile.summary,
-        skills: careerProfile.skills,
-        currentTitle: careerProfile.currentTitle,
-        yearsExperience: careerProfile.yearsExperience
-      })
+    const changes = changedFields(
+      previousPreferences,
+      body.preferences,
+      previousCareer,
+      careerProfile
+    )
+    const matchingChanged = changes.length > 0
 
     const matchingText = buildMatchingProfileText({
       resumeText: existing.resume_text,
@@ -142,25 +174,41 @@ export async function POST(request: Request) {
     if (updateError) throw updateError
 
     let search: Record<string, unknown> | null = null
-    let searchMessage = 'No matching inputs changed.'
+    let searchMessage = 'Career Profile saved. No matching inputs changed.'
+    let searchTriggered = false
 
     if (matchingChanged) {
       try {
         search = await searchAndMatchForUser(supabase, user.id, 'profile_change')
-        searchMessage = 'Job discovery and ranking refreshed from your Career Profile.'
+        searchTriggered = true
+        searchMessage = 'Career Profile saved. Job discovery and ranking refreshed from your changes.'
       } catch (error) {
         if (error instanceof SearchCooldownError) {
-          searchMessage = `Profile saved. Matching refresh was skipped because a search ran ${error.retryAfterSeconds}s too recently.`
+          searchMessage = `Career Profile saved. Matching refresh was skipped because a search ran ${error.retryAfterSeconds}s too recently.`
         } else {
           console.error('[profile-search-refresh]', error)
-          searchMessage = 'Profile saved. Live job refresh could not complete; you can run Search for jobs manually.'
+          searchMessage = 'Career Profile saved. Live job refresh could not complete; you can run Search for jobs manually.'
         }
+      }
+
+      const { error: eventError } = await supabase
+        .from('career_profile_events')
+        .insert({
+          user_id: user.id,
+          event_type: 'profile_change',
+          changed_fields: changes,
+          search_triggered: searchTriggered
+        })
+
+      if (eventError) {
+        console.error('[career-profile-event]', eventError.message)
       }
     }
 
     return NextResponse.json({
       ok: true,
       matchingChanged,
+      changedFields: changes,
       careerProfile,
       search,
       searchMessage
