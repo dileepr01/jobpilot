@@ -29,7 +29,9 @@ export async function POST(request: Request) {
     }
 
     const resumeText = await parseResume(file)
-    const parsedResume = await extractResumeIntelligence(resumeText)
+    const parsedResume = await extractResumeIntelligence(resumeText, {
+      gatewayToken: request.headers.get('x-vercel-oidc-token')
+    })
 
     return NextResponse.json({ parsedResume })
   } catch (error) {
