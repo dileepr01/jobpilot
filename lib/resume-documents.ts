@@ -54,6 +54,15 @@ const HEADING_VARIANTS = [
   ...SECTION_HEADINGS.map((value) => ({ value, canonical: value }))
 ].sort((left, right) => right.value.length - left.value.length)
 
+const HEADING_LOOKUP = new Map(
+  HEADING_VARIANTS.map(({ value, canonical }) => [value, canonical])
+)
+
+const HEADING_BREAK_REGEX = new RegExp(
+  `\\s*(${HEADING_VARIANTS.map(({ value }) => escapeRegex(value)).join('|')})\\s*`,
+  'g'
+)
+
 type BlockKind =
   | 'name'
   | 'title'
@@ -179,8 +188,12 @@ function extractHeader(headerText: string): ResumeHeader {
 
     location =
       beforeContact.match(
-        /([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,2},\s*(?:India|USA|United States|UK|Canada|Australia|UAE))$/i
-      )?.[1] || ''
+        /\b(Bengaluru|Bangalore|Hyderabad|Chennai|Pune|Mumbai|Delhi|Noida|Gurugram),\s*(India)\s*$/i
+      )?.[0] ||
+      beforeContact.match(
+        /([A-Z][A-Za-z.'-]*(?:\s+[A-Z][A-Za-z.'-]*){0,2},\s*(?:USA|United States|UK|Canada|Australia|UAE))$/i
+      )?.[1] ||
+      ''
   }
 
   const contact = [location, phone, email, linkedin]
@@ -223,9 +236,12 @@ function removeRepeatedHeader(
     text = text.replace(exactHeader, ' ')
   }
 
-  if (header.name) {
+  if (header.name && header.title) {
     text = text.replace(
-      new RegExp(`\\s+${escapeRegex(header.name)}\\s+(?=${escapeRegex(header.title)})`, 'gi'),
+      new RegExp(
+        `\\s+${escapeRegex(header.name)}\\s+(?=${escapeRegex(header.title)})`,
+        'gi'
+      ),
       ' '
     )
   }
@@ -234,20 +250,14 @@ function removeRepeatedHeader(
 }
 
 function addStructureBreaks(value: string) {
-  let text = value
-
-  for (const { value: variant, canonical } of HEADING_VARIANTS) {
-    text = text.replace(
-      new RegExp(`\\s*${escapeRegex(variant)}\\s*`, 'g'),
-      `\n${canonical}\n`
+  return value
+    .replace(
+      HEADING_BREAK_REGEX,
+      (_match, heading: string) =>
+        `\n${HEADING_LOOKUP.get(heading) || heading}\n`
     )
-  }
-
-  text = text
     .replace(/\s*[•●▪◦]\s*/g, '\n- ')
     .replace(/\n\s*[-*]\s+/g, '\n- ')
-
-  return text
 }
 
 export function normalizeResumeForExport(content: string) {
