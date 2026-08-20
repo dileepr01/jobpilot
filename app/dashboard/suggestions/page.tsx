@@ -1,4 +1,8 @@
 import { CareerProfileControls } from '@/components/career-profile-controls'
+import {
+  NaukriAutoRefresh,
+  type NaukriConnectionView
+} from '@/components/naukri-auto-refresh'
 import type { CareerProfile } from '@/lib/career-profile'
 import { createClient } from '@/lib/supabase/server'
 
@@ -8,7 +12,11 @@ export default async function SuggestionsPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const [{ data: profile }, { data: latestSearch }] = await Promise.all([
+  const [
+    { data: profile },
+    { data: latestSearch },
+    { data: naukriConnection }
+  ] = await Promise.all([
     supabase
       .from('profiles')
       .select('auto_career_profile, career_profile, career_profile_updated_at')
@@ -21,6 +29,11 @@ export default async function SuggestionsPage() {
       .eq('status', 'completed')
       .order('completed_at', { ascending: false })
       .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('naukri_connections')
+      .select('enabled, status, profile_id, last_attempt_at, last_sync_at, last_error')
+      .eq('user_id', user!.id)
       .maybeSingle()
   ])
 
@@ -41,12 +54,23 @@ export default async function SuggestionsPage() {
       })
     : 'Not generated yet'
 
+  const connection: NaukriConnectionView = naukriConnection
+    ? {
+        enabled: naukriConnection.enabled,
+        status: naukriConnection.status,
+        profileId: naukriConnection.profile_id,
+        lastAttemptAt: naukriConnection.last_attempt_at,
+        lastSyncAt: naukriConnection.last_sync_at,
+        lastError: naukriConnection.last_error
+      }
+    : null
+
   return (
     <div className="mx-auto max-w-5xl">
       <p className="text-sm font-bold text-indigo-600">Career intelligence</p>
       <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-950">Your JobPilot Career Profile</h1>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-        JobPilot keeps this profile current using your resume, target preferences and strongest matched roles. LinkedIn and Naukri are optional destinations, not required inputs.
+        JobPilot keeps this profile current using your resume, target preferences and strongest matched roles. Naukri Auto Refresh can optionally keep your Naukri resume fresh too; LinkedIn remains manual.
       </p>
 
       <section className="mt-7 rounded-[1.75rem] border border-indigo-100 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 p-5 sm:p-7">
@@ -55,7 +79,7 @@ export default async function SuggestionsPage() {
             <p className="text-xs font-black uppercase tracking-[.16em] text-indigo-600">Automatic profile intelligence</p>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Keep JobPilot updated for me</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              When enabled, JobPilot refreshes this internal profile whenever Career Insights detects a newer completed search. It never changes employers, dates, qualifications or other factual history.
+              When enabled, JobPilot refreshes this internal profile whenever Career Profile detects a newer completed search. It never changes employers, dates, qualifications or other factual history.
             </p>
           </div>
           <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 text-sm shadow-sm">
@@ -70,7 +94,7 @@ export default async function SuggestionsPage() {
         <article className="card p-5 sm:p-6 lg:col-span-1">
           <p className="text-xs font-black uppercase tracking-[.15em] text-slate-400">Career headline</p>
           <p className="mt-3 text-lg font-black leading-7 text-slate-950">
-            {career.headline || 'Refresh Career Insights to create your JobPilot headline.'}
+            {career.headline || 'Refresh Career Profile to create your JobPilot headline.'}
           </p>
         </article>
 
@@ -92,11 +116,13 @@ export default async function SuggestionsPage() {
         </article>
       </section>
 
+      <NaukriAutoRefresh connection={connection} />
+
       <section className="mt-7 rounded-3xl border border-slate-200 bg-white p-5 sm:p-6">
-        <p className="text-xs font-black uppercase tracking-[.15em] text-slate-400">Optional external profiles</p>
-        <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Use JobPilot insights anywhere you want</h2>
+        <p className="text-xs font-black uppercase tracking-[.15em] text-slate-400">External profiles</p>
+        <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">LinkedIn stays under your control</h2>
         <p className="mt-2 text-sm leading-6 text-slate-500">
-          External profiles are optional. JobPilot cannot silently edit them without provider-approved profile permissions, but you can open them when you want to copy an approved headline, summary or keywords.
+          JobPilot will not automate LinkedIn edits. Use your JobPilot headline, summary and keywords as suggestions, then choose what you want to copy to LinkedIn. Naukri can be refreshed automatically using the opt-in connection above.
         </p>
         <div className="mt-5 flex flex-wrap gap-2">
           <a className="btn-secondary" href="https://www.linkedin.com/in/me/edit/top-card/" target="_blank" rel="noreferrer">Open LinkedIn ↗</a>
