@@ -147,11 +147,13 @@ export function OnboardingForm() {
       return
     }
 
-    setMessage('Profile saved. Finding your best job matches…')
+    setMessage('Profile saved. Searching live job sources for you…')
     setMessageType('success')
 
     const matchResponse = await fetch('/api/matches/run', {
-      method: 'POST'
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ trigger: 'resume_upload' })
     })
 
     const matchData = await matchResponse
@@ -163,7 +165,7 @@ export function OnboardingForm() {
     if (!matchResponse.ok) {
       setMessage(
         matchData.error ||
-          'Your profile was saved, but matches could not be generated.'
+          'Your profile was saved, but the live job search could not be completed. You can retry from the dashboard.'
       )
       setMessageType('error')
       return
@@ -327,7 +329,7 @@ export function OnboardingForm() {
         {previewing
           ? 'Preparing suggestions…'
           : loading
-            ? 'Saving profile…'
+            ? 'Saving and searching…'
             : 'Finish setup'}
       </button>
     </form>
