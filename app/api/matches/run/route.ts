@@ -32,7 +32,11 @@ export async function POST(request: Request) {
     const trigger: JobSearchTrigger =
       body.trigger === 'resume_upload' ? 'resume_upload' : 'manual'
 
-    const metrics = await searchAndMatchForUser(user.id, trigger)
+    const metrics = await searchAndMatchForUser(
+      supabase,
+      user.id,
+      trigger
+    )
 
     return NextResponse.json({ ok: true, ...metrics })
   } catch (error) {
@@ -55,6 +59,8 @@ export async function POST(request: Request) {
       error instanceof Error
         ? error.message
         : 'Could not search for jobs.'
+
+    console.error('[job-search-route]', error)
 
     return NextResponse.json(
       { error: message },
