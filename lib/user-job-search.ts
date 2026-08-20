@@ -169,6 +169,84 @@ async function enforceCooldown(userId: string) {
   throw new SearchCooldownError(retryAfterSeconds)
 }
 
+async function sendSearchNotifications(
+  userId: string,
+  profile: {
+    email_digest_enabled?: boolean
+    telegram_enabled?: boolean
+    telegram_chat_id?: string | null
+  },
+  scored: Array<{
+    job: JobRecord
+    breakdown: ReturnType<typeof scoreJob>
+  }>
+) {
+  const env = getServerEnv()
+
+  if (profile.email_digest_enabled) {
+    try {
+      const response = await fetch(
+        `${env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-digest`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: env.SUPABASE_SERVICE_ROLE_KEY
+          },
+          body: JSON.stringify({ userId })
+        }
+      )
+
+      if (!response.ok) {
+        console.error('[search-email]', await response.text())
+      }
+    } catch (error) {
+      console.error('[search-email]', error)
+    }
+  }
+
+  if (
+    profile.telegram_enabled &&
+    profile.telegram_chat_id &&
+    process.env.TELEGRAM_BOT_TOKEN
+  ) {
+    const top = scored
+      .filter((item) => item.breakdown.total >= 85)
+      .slice(0, 5)
+
+    if (top.length) {
+      const text = [
+        '🚀 JobPilot high matches',
+        ...top.map(
+          ({ job, breakdown }) =>
+            `${Math.round(breakdown.total)}% — ${job.title} at ${job.company}\n${job.external_url}`
+        )
+      ].join('\n\n')
+
+      try {
+        const response = await fetch(
+          `https://api.telegram.org/bot${process.env.TELEGRAM_BOT_TOKEN}/sendMessage`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              chat_id: profile.telegram_chat_id,
+              text,
+              disable_web_page_preview: true
+            })
+          }
+        )
+
+        if (!response.ok) {
+          console.error('[search-telegram]', await response.text())
+        }
+      } catch (error) {
+        console.error('[search-telegram]', error)
+      }
+    }
+  }
+}
+
 export async function searchAndMatchForUser(
   userId: string,
   trigger: JobSearchTrigger = 'manual'
@@ -188,7 +266,9 @@ export async function searchAndMatchForUser(
     const [profileResult, sourcesResult] = await Promise.all([
       admin
         .from('profiles')
-        .select('preferences, resume_embedding')
+        .select(
+          'preferences, resume_embedding, email_digest_enabled, telegram_enabled, telegram_chat_id'
+        )
         .eq('user_id', userId)
         .single(),
       admin
@@ -323,6 +403,8 @@ export async function searchAndMatchForUser(
         metrics
       })
       .eq('id', run.id)
+
+    await sendSearchNotifications(userId, profile, scored)
 
     return metrics
   } catch (error) {
