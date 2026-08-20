@@ -94,5 +94,5 @@ export interface ApplicationKit {
   }>
   tailoredResume: TailoredResume
   atsReport: AtsReport
-  applicationPack: ApplicationPack
+  applicationPack?: ApplicationPack
 }
