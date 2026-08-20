@@ -12,7 +12,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <div className="min-h-screen">
       <Sidebar name={profile.full_name || user.email || ''} />
-      <main className="px-5 py-7 sm:px-8 lg:ml-64 lg:px-10 lg:py-10">{children}</main>
+      <main className="px-5 py-7 sm:px-8 lg:ml-72 lg:px-10 lg:py-9">{children}</main>
     </div>
   )
 }
