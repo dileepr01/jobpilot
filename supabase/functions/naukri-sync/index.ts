@@ -24,13 +24,20 @@ type RequestBody = {
   consent?: boolean
 }
 
-const LOGIN_URL = 'https://www.naukri.com/central-login-services/v1/login'
-const PROFILE_LIST_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/profiles'
-const FILE_UPLOAD_URL = 'https://filevalidation.naukri.com/file'
+type JobPilotProfile = {
+  resume_text?: string | null
+  parsed_resume?: Record<string, unknown> | null
+  career_profile?: Record<string, unknown> | null
+}
 
-// Naukri does not publish a job-seeker profile editing API. This header mirrors
-// Naukri's current browser flow and may change. We fail closed on anti-bot/MFA
-// challenges and never try to bypass them.
+const LOGIN_URL = 'https://www.naukri.com/central-login-services/v1/login'
+const DASHBOARD_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/dashboard'
+const FULL_PROFILE_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v2/users/self?expand_level=4'
+const PROFILE_UPDATE_URL = 'https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v1/users/self/fullprofiles'
+
+// Naukri does not publish a supported job-seeker profile-edit API. This mirrors
+// Naukri's current browser flow and can change. JobPilot fails closed on
+// CAPTCHA/MFA/anti-bot challenges and never attempts to bypass them.
 const NAUKRI_NKPARAM =
   'oFYlsMP9SN/18UTJyWR0J4Far8aGlf/RgiTehgjzAfodyCTha++NVMb+jAOJjH4rULRVnn65HS1K0dD3clyVyQ=='
 
@@ -103,6 +110,22 @@ const browserHeaders = {
   referer: 'https://www.naukri.com/'
 }
 
+function naukriAuthHeaders(cookies: NaukriCookies, systemid = 'Naukri') {
+  return {
+    accept: 'application/json',
+    appid: '105',
+    clientid: 'd3skt0p',
+    systemid,
+    authorization: `Bearer ${cookies.naukAt}`,
+    cookie: cookieHeader(cookies),
+    origin: 'https://www.naukri.com',
+    referer: 'https://www.naukri.com/mnjuser/profile',
+    'x-requested-with': 'XMLHttpRequest',
+    'user-agent':
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36'
+  }
+}
+
 async function loginNaukri(username: string, password: string) {
   const response = await fetch(LOGIN_URL, {
     method: 'POST',
@@ -150,16 +173,8 @@ function findProfileId(value: unknown): string | null {
 }
 
 async function discoverProfileId(cookies: NaukriCookies) {
-  const response = await fetch(PROFILE_LIST_URL, {
-    headers: {
-      accept: 'application/json',
-      appid: '109',
-      clientid: 'd3skt0p',
-      systemid: 'jobseeker',
-      authorization: `Bearer ${cookies.naukAt}`,
-      cookie: cookieHeader(cookies),
-      referer: 'https://www.naukri.com/'
-    }
+  const response = await fetch(DASHBOARD_URL, {
+    headers: naukriAuthHeaders(cookies)
   })
 
   if (!response.ok) return null
@@ -167,75 +182,140 @@ async function discoverProfileId(cookies: NaukriCookies) {
   return findProfileId(payload)
 }
 
-function resumeMime(filename: string) {
-  return filename.toLowerCase().endsWith('.docx')
-    ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    : 'application/pdf'
-}
-
-async function uploadResumeToNaukri(
-  cookies: NaukriCookies,
-  resume: Blob,
-  filename: string,
-  profileId: string
-) {
-  const formKey = 'F51f8e7e54e205'
-  const fileKey = 'UyFNbCXtBHdkXQ'
-  const form = new FormData()
-  form.append('formKey', formKey)
-  form.append('fileName', filename)
-  form.append('uploadCallback', 'true')
-  form.append('fileKey', fileKey)
-  form.append('file', new Blob([resume], { type: resumeMime(filename) }), filename)
-
-  const cookiesString = cookieHeader(cookies)
-  const uploadResponse = await fetch(FILE_UPLOAD_URL, {
-    method: 'POST',
-    headers: {
-      accept: 'application/json, text/javascript, */*; q=0.01',
-      appid: '109',
-      clientid: 'd3skt0p',
-      systemid: 'fileupload',
-      origin: 'https://www.naukri.com',
-      referer: 'https://www.naukri.com/',
-      cookie: cookiesString,
-      'user-agent':
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36'
-    },
-    body: form
+async function readNaukriProfile(cookies: NaukriCookies) {
+  const response = await fetch(FULL_PROFILE_URL, {
+    headers: naukriAuthHeaders(cookies)
   })
 
-  if (!uploadResponse.ok) {
-    throw new Error(`Naukri resume upload failed (${uploadResponse.status}).`)
+  if (!response.ok) {
+    throw new Error(`Naukri profile read failed (${response.status}).`)
   }
 
-  const updateUrl = `https://www.naukri.com/cloudgateway-mynaukri/resman-aggregator-services/v0/users/self/profiles/${encodeURIComponent(profileId)}/advResume`
-  const updateResponse = await fetch(updateUrl, {
+  return response.json().catch(() => ({}))
+}
+
+function findValueByKeys(value: unknown, keys: string[]): unknown {
+  if (!value || typeof value !== 'object') return undefined
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findValueByKeys(item, keys)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+
+  const object = value as Record<string, unknown>
+  for (const key of keys) {
+    if (object[key] !== undefined && object[key] !== null) return object[key]
+  }
+
+  for (const nested of Object.values(object)) {
+    const found = findValueByKeys(nested, keys)
+    if (found !== undefined) return found
+  }
+
+  return undefined
+}
+
+function asString(value: unknown) {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function asStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') return item.trim()
+        if (item && typeof item === 'object') {
+          const object = item as Record<string, unknown>
+          return asString(object.label || object.name || object.skill || object.entitySkill)
+        }
+        return ''
+      })
+      .filter(Boolean)
+  }
+
+  if (typeof value === 'string') {
+    return value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+
+  return []
+}
+
+function normalizeText(value: string) {
+  return value.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function normalizeSkill(value: string) {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function uniqueCaseInsensitive(values: string[]) {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const raw of values) {
+    const value = normalizeSkill(raw)
+    if (!value) continue
+    const key = value.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(value)
+  }
+  return result
+}
+
+function limitSkillsToNaukri(values: string[]) {
+  const result: string[] = []
+  let length = 0
+  for (const value of uniqueCaseInsensitive(values)) {
+    const added = (result.length ? 1 : 0) + value.length
+    if (length + added > 250) break
+    result.push(value)
+    length += added
+  }
+  return result
+}
+
+function buildDesiredProfile(profile: JobPilotProfile) {
+  const parsed = (profile.parsed_resume || {}) as Record<string, unknown>
+  const career = (profile.career_profile || {}) as Record<string, unknown>
+  const resumeText = (profile.resume_text || '').toLowerCase()
+
+  const parsedSkills = asStringArray(parsed.skills)
+  const careerKeywords = asString(career.keywords)
+    .split(',')
+    .map((item) => item.trim())
+    .filter((skill) => skill && resumeText.includes(skill.toLowerCase()))
+
+  const keySkills = limitSkillsToNaukri([...parsedSkills, ...careerKeywords])
+  const parsedTitles = asStringArray(parsed.titles)
+  const headline = asString(career.headline) || parsedTitles[0] || ''
+
+  return {
+    headline: headline.slice(0, 250),
+    keySkills
+  }
+}
+
+async function updateNaukriProfile(
+  cookies: NaukriCookies,
+  profileId: string,
+  profileFields: Record<string, unknown>
+) {
+  const response = await fetch(PROFILE_UPDATE_URL, {
     method: 'POST',
     headers: {
-      accept: 'application/json',
-      appid: '105',
-      systemid: '105',
-      clientid: 'd3skt0p',
-      authorization: `Bearer ${cookies.naukAt}`,
-      cookie: cookiesString,
+      ...naukriAuthHeaders(cookies),
       'content-type': 'application/json',
       'x-http-method-override': 'PUT',
-      'x-requested-with': 'XMLHttpRequest',
-      origin: 'https://www.naukri.com',
-      referer: 'https://www.naukri.com/'
+      referer: 'https://www.naukri.com/mnjuser/profile?action=modalOpen'
     },
-    body: JSON.stringify({
-      textCV: {
-        formKey,
-        fileKey,
-        textCvContent: ''
-      }
-    })
+    body: JSON.stringify({ profile: profileFields, profileId })
   })
 
-  if (!updateResponse.ok) {
-    throw new Error(`Naukri profile resume update failed (${updateResponse.status}).`)
+  if (!response.ok) {
+    throw new Error(`Naukri profile update failed (${response.status}).`)
   }
 }
 
@@ -257,7 +337,7 @@ async function syncUser(
         admin.rpc('get_naukri_sync_credentials', { p_user_id: userId }),
         admin
           .from('profiles')
-          .select('resume_url, resume_filename')
+          .select('resume_text, parsed_resume, career_profile')
           .eq('user_id', userId)
           .single()
       ])
@@ -269,7 +349,7 @@ async function syncUser(
     if (!credential?.username || !credential.password) {
       throw new Error('Naukri is not connected.')
     }
-    if (!profile?.resume_url || !profile.resume_filename) {
+    if (!profile?.resume_text) {
       throw new Error('Upload a resume to JobPilot before enabling Naukri Auto Refresh.')
     }
 
@@ -279,22 +359,58 @@ async function syncUser(
       throw new Error('JobPilot could not detect your Naukri profile ID. Open Naukri Auto Refresh and add the profile ID once.')
     }
 
-    const { data: resume, error: resumeError } = await admin.storage
-      .from('resumes')
-      .download(profile.resume_url)
-    if (resumeError) throw resumeError
+    const desired = buildDesiredProfile(profile as JobPilotProfile)
+    if (!desired.headline && desired.keySkills.length === 0) {
+      throw new Error('JobPilot does not have enough verified profile data to update Naukri yet.')
+    }
 
-    await uploadResumeToNaukri(cookies, resume, profile.resume_filename, profileId)
+    const current = await readNaukriProfile(cookies)
+    const currentHeadline = asString(findValueByKeys(current, ['resumeHeadline']))
+    const currentSkills = asStringArray(findValueByKeys(current, ['keySkills', 'keyskills']))
+
+    const changedFields: string[] = []
+    const update: Record<string, unknown> = {}
+
+    if (desired.headline && normalizeText(desired.headline) !== normalizeText(currentHeadline)) {
+      update.resumeHeadline = desired.headline
+      changedFields.push('resume headline')
+    }
+
+    const currentSkillKey = uniqueCaseInsensitive(currentSkills)
+      .map((item) => item.toLowerCase())
+      .sort()
+      .join('|')
+    const desiredSkillKey = uniqueCaseInsensitive(desired.keySkills)
+      .map((item) => item.toLowerCase())
+      .sort()
+      .join('|')
+
+    if (desired.keySkills.length && desiredSkillKey !== currentSkillKey) {
+      update.keySkills = desired.keySkills.join(',')
+      changedFields.push('key skills')
+    }
+
+    if (changedFields.length > 0) {
+      await updateNaukriProfile(cookies, profileId, update)
+    }
 
     await admin.rpc('update_naukri_sync_status', {
       p_user_id: userId,
       p_status: 'connected',
       p_error: null,
       p_profile_id: profileId,
-      p_synced: true
+      p_synced: changedFields.length > 0
     })
 
-    return { userId, ok: true }
+    return {
+      userId,
+      ok: true,
+      changed: changedFields.length > 0,
+      changedFields,
+      message: changedFields.length
+        ? `Updated ${changedFields.join(' and ')}.`
+        : 'Naukri profile is already aligned with JobPilot; no artificial change was made.'
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const reconnect = /login failed|captcha|mfa|browser validation|not connected/i.test(message)
