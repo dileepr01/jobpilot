@@ -1,13 +1,15 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { scoreJob } from '@/lib/score'
-import type { JobPreferences, JobRecord } from '@/lib/types'
+import {
+  SearchCooldownError,
+  searchAndMatchForUser,
+  type JobSearchTrigger
+} from '@/lib/user-job-search'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+export const maxDuration = 60
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const supabase = createClient()
 
@@ -23,127 +25,36 @@ export async function POST() {
       )
     }
 
-    const admin = createAdminClient()
-
-    const { data: profile, error: profileError } = await admin
-      .from('profiles')
-      .select('preferences, resume_embedding')
-      .eq('user_id', user.id)
-      .single()
-
-    if (profileError || !profile?.resume_embedding) {
-      return NextResponse.json(
-        { error: 'Complete your matching profile first.' },
-        { status: 400 }
-      )
+    const body = await request.json().catch(() => ({})) as {
+      trigger?: JobSearchTrigger
     }
 
-    const { data: candidates, error: candidateError } =
-      await admin.rpc('match_jobs_for_profile', {
-        p_user_id: user.id,
-        p_limit: 200
-      })
+    const trigger: JobSearchTrigger =
+      body.trigger === 'resume_upload' ? 'resume_upload' : 'manual'
 
-    if (candidateError) {
-      throw candidateError
-    }
+    const metrics = await searchAndMatchForUser(user.id, trigger)
 
-    const candidateRows = candidates || []
-    const jobIds = candidateRows.map(
-      (candidate: { job_id: string }) => candidate.job_id
-    )
-
-    if (!jobIds.length) {
-      return NextResponse.json({
-        ok: true,
-        matches: 0,
-        strong: 0,
-        potential: 0,
-        stretch: 0
-      })
-    }
-
-    const { data: jobs, error: jobsError } = await admin
-      .from('jobs')
-      .select('*')
-      .in('id', jobIds)
-
-    if (jobsError) {
-      throw jobsError
-    }
-
-    const similarities = new Map<string, number>(
-      candidateRows.map(
-        (candidate: {
-          job_id: string
-          semantic_similarity: number
-        }) => [
-          String(candidate.job_id),
-          Number(candidate.semantic_similarity)
-        ]
-      )
-    )
-
-    const preferences =
-      (profile.preferences || {}) as JobPreferences
-
-    const scored = ((jobs || []) as unknown as JobRecord[])
-      .map((job) => ({
-        job,
-        breakdown: scoreJob(
-          job,
-          preferences,
-          similarities.get(job.id) ?? 0
-        )
-      }))
-      .sort(
-        (left, right) =>
-          right.breakdown.total - left.breakdown.total
-      )
-      .slice(0, 100)
-
-    if (!scored.length) {
-      return NextResponse.json({
-        ok: true,
-        matches: 0,
-        strong: 0,
-        potential: 0,
-        stretch: 0
-      })
-    }
-
-    const { error: matchError } = await admin
-      .from('matches')
-      .upsert(
-        scored.map(({ job, breakdown }) => ({
-          user_id: user.id,
-          job_id: job.id,
-          score: breakdown.total,
-          score_breakdown: breakdown
-        })),
-        { onConflict: 'user_id,job_id' }
-      )
-
-    if (matchError) {
-      throw matchError
-    }
-
-    const scores = scored.map((item) => item.breakdown.total)
-
-    return NextResponse.json({
-      ok: true,
-      matches: scores.length,
-      strong: scores.filter((score) => score >= 80).length,
-      potential: scores.filter(
-        (score) => score >= 50 && score < 80
-      ).length,
-      stretch: scores.filter((score) => score < 50).length
-    })
+    return NextResponse.json({ ok: true, ...metrics })
   } catch (error) {
+    if (error instanceof SearchCooldownError) {
+      return NextResponse.json(
+        {
+          error: error.message,
+          retryAfterSeconds: error.retryAfterSeconds
+        },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(error.retryAfterSeconds)
+          }
+        }
+      )
+    }
+
     const message =
       error instanceof Error
         ? error.message
-        : 'Could not generate matches.'
+        : 'Could not search for jobs.'
 
     return NextResponse.json(
       { error: message },
