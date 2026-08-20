@@ -2,10 +2,10 @@ import Link from 'next/link'
 import { SignOutButton } from '@/components/sign-out-button'
 
 const nav = [
-  ['⌂', 'Discover', '/dashboard'],
+  ['⌂', 'Today', '/dashboard'],
   ['▤', 'Applications', '/dashboard/kanban'],
-  ['✦', 'Career profile', '/dashboard/suggestions'],
-  ['⚙', 'Profile', '/dashboard/profile']
+  ['✦', 'Career Presence', '/dashboard/suggestions'],
+  ['⚙', 'Career Profile', '/dashboard/profile']
 ]
 
 export function Sidebar({ name }: { name: string }) {
@@ -38,7 +38,7 @@ export function Sidebar({ name }: { name: string }) {
 
       <div className="mt-3 hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-50 to-cyan-50 p-4 lg:block">
         <p className="text-xs font-black uppercase tracking-[.15em] text-indigo-600">JobPilot tip</p>
-        <p className="mt-2 text-xs leading-5 text-slate-600">Refresh discovery when your target role or location changes so your next match score uses the latest profile.</p>
+        <p className="mt-2 text-xs leading-5 text-slate-600">Keep your real skills and targets current. Meaningful Career Profile changes automatically refresh opportunity ranking.</p>
       </div>
 
       <div className="mt-3 border-t border-slate-100 pt-3 lg:absolute lg:inset-x-5 lg:bottom-5 lg:mt-0 lg:border-0 lg:pt-0">
