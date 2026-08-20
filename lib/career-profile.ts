@@ -77,7 +77,8 @@ export function buildMatchingProfileText(input: {
 
 export async function refreshCareerProfile(
   supabase: SupabaseClient,
-  userId: string
+  userId: string,
+  options?: { gatewayToken?: string | null }
 ): Promise<CareerProfile> {
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
@@ -114,7 +115,7 @@ export async function refreshCareerProfile(
     .join('\n\n')
 
   const generated = resumeText
-    ? await generateProfileSuggestions({ resumeText, recentJobs })
+    ? await generateProfileSuggestions({ resumeText, recentJobs }, options)
     : { suggestions: [] as Array<{ type: string; content: string }> }
 
   const generatedKeywords =
