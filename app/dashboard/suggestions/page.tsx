@@ -8,13 +8,32 @@ export default async function SuggestionsPage() {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('auto_career_profile, career_profile, career_profile_updated_at')
-    .eq('user_id', user!.id)
-    .single()
+  const [{ data: profile }, { data: latestSearch }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('auto_career_profile, career_profile, career_profile_updated_at')
+      .eq('user_id', user!.id)
+      .single(),
+    supabase
+      .from('job_search_runs')
+      .select('completed_at')
+      .eq('user_id', user!.id)
+      .eq('status', 'completed')
+      .order('completed_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+  ])
 
   const career = (profile?.career_profile || {}) as Partial<CareerProfile>
+  const profileUpdatedAt = profile?.career_profile_updated_at
+    ? new Date(profile.career_profile_updated_at).getTime()
+    : 0
+  const latestSearchAt = latestSearch?.completed_at
+    ? new Date(latestSearch.completed_at).getTime()
+    : 0
+  const autoEnabled = profile?.auto_career_profile !== false
+  const refreshOnLoad = autoEnabled && (!profileUpdatedAt || latestSearchAt > profileUpdatedAt)
+
   const lastUpdated = profile?.career_profile_updated_at
     ? new Date(profile.career_profile_updated_at).toLocaleString('en-IN', {
         dateStyle: 'medium',
@@ -36,7 +55,7 @@ export default async function SuggestionsPage() {
             <p className="text-xs font-black uppercase tracking-[.16em] text-indigo-600">Automatic profile intelligence</p>
             <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950">Keep JobPilot updated for me</h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              When enabled, JobPilot can refresh this internal profile from new resume data and high-fit job patterns. It never changes employers, dates, qualifications or other factual history.
+              When enabled, JobPilot refreshes this internal profile whenever Career Insights detects a newer completed search. It never changes employers, dates, qualifications or other factual history.
             </p>
           </div>
           <div className="rounded-2xl border border-white bg-white/80 px-4 py-3 text-sm shadow-sm">
@@ -44,7 +63,7 @@ export default async function SuggestionsPage() {
             <p className="mt-1 text-xs text-slate-500">{lastUpdated}</p>
           </div>
         </div>
-        <CareerProfileControls enabled={profile?.auto_career_profile !== false} />
+        <CareerProfileControls enabled={autoEnabled} refreshOnLoad={refreshOnLoad} />
       </section>
 
       <section className="mt-6 grid gap-4 lg:grid-cols-3">
