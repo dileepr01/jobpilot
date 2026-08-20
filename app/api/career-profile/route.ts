@@ -10,7 +10,7 @@ import type { JobPreferences, ParsedResume } from '@/lib/types'
 export const runtime = 'nodejs'
 export const maxDuration = 60
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const supabase = createClient()
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -19,7 +19,9 @@ export async function POST() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const profile = await refreshCareerProfile(supabase, user.id)
+    const profile = await refreshCareerProfile(supabase, user.id, {
+      gatewayToken: request.headers.get('x-vercel-oidc-token')
+    })
 
     if (profile.source !== 'user') {
       const { data: source, error: sourceError } = await supabase
