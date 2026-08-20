@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { parseResume } from '@/lib/resume-parser'
-import { extractResumeIntelligence } from '@/lib/hf'
+import { extractResumeIntelligence } from '@/lib/ai-text'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
