@@ -83,8 +83,8 @@ export function ProfileForm({ profile, sources }: { profile: any; sources: any[]
           <div className="sm:col-span-2"><label className="label">Companies to follow</label><input className="input" name="followedCompanies" defaultValue={(preferences.followedCompanies || []).join(', ')} /></div>
         </div>
         <div className="mt-7 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2">
-          <label className="text-sm font-semibold"><input className="mr-2" type="checkbox" name="emailDigest" defaultChecked={profile.email_digest_enabled} />Daily email digest</label>
-          <label className="text-sm font-semibold"><input className="mr-2" type="checkbox" name="telegramEnabled" defaultChecked={profile.telegram_enabled} />Telegram alerts above 85</label>
+          <label className="text-sm font-semibold"><input className="mr-2" type="checkbox" name="emailDigest" defaultChecked={profile.email_digest_enabled} />Email high matches after each search</label>
+          <label className="text-sm font-semibold"><input className="mr-2" type="checkbox" name="telegramEnabled" defaultChecked={profile.telegram_enabled} />Telegram high matches after each search</label>
           <div className="sm:col-span-2"><label className="label">Telegram chat ID</label><input className="input" name="telegramChatId" defaultValue={profile.telegram_chat_id || ''} /></div>
         </div>
         {message && <p className="mt-4 text-sm text-slate-600">{message}</p>}
