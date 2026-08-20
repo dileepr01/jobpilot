@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { JobCard, type MatchView } from '@/components/job-card'
 import { EmptyState } from '@/components/empty-state'
+import { FindJobsButton } from '@/components/find-jobs-button'
 
 export const dynamic = 'force-dynamic'
 
@@ -65,7 +66,7 @@ export default async function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-bold text-indigo-600">
             Personalized results
@@ -75,14 +76,13 @@ export default async function DashboardPage() {
             Your job matches
           </h1>
 
-          <p className="mt-2 text-sm text-slate-500">
-            Ranked using your resume and matching preferences.
+          <p className="mt-2 max-w-2xl text-sm text-slate-500">
+            JobPilot searches live sources only when you ask it to, then ranks
+            the results using your resume and matching preferences.
           </p>
         </div>
 
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700">
-          Review every role before applying
-        </div>
+        <FindJobsButton />
       </div>
 
       <section className="mt-7 grid gap-3 sm:grid-cols-3">
@@ -146,8 +146,8 @@ export default async function DashboardPage() {
       ) : (
         <section className="mt-7">
           <EmptyState
-            title="No matches found"
-            body="Review your target roles and locations, then try matching again."
+            title="No matches yet"
+            body="Use Search for jobs to query live sources using your resume, target roles, and locations."
           />
         </section>
       )}
