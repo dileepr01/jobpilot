@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { generateApplicationKit } from '@/lib/hf'
+import { generateApplicationKit } from '@/lib/ai-text'
 import { buildApplicationPack } from '@/lib/application-pack'
 import { normalizeResumeForExport } from '@/lib/resume-documents'
 
