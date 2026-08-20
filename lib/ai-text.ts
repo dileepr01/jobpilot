@@ -8,8 +8,17 @@ import {
 const GATEWAY_URL = 'https://ai-gateway.vercel.sh/v1/chat/completions'
 const DEFAULT_GATEWAY_MODEL = 'openai/gpt-5.4-mini'
 
-function gatewayToken() {
-  return process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN || ''
+type AiRuntimeOptions = {
+  gatewayToken?: string | null
+}
+
+function gatewayToken(options?: AiRuntimeOptions) {
+  return (
+    options?.gatewayToken ||
+    process.env.AI_GATEWAY_API_KEY ||
+    process.env.VERCEL_OIDC_TOKEN ||
+    ''
+  )
 }
 
 function extractJson<T>(text: string): T | null {
@@ -23,8 +32,12 @@ function extractJson<T>(text: string): T | null {
   }
 }
 
-async function generateGatewayJson<T>(system: string, user: string): Promise<T | null> {
-  const token = gatewayToken()
+async function generateGatewayJson<T>(
+  system: string,
+  user: string,
+  options?: AiRuntimeOptions
+): Promise<T | null> {
+  const token = gatewayToken(options)
   if (!token) return null
 
   const controller = new AbortController()
@@ -62,28 +75,38 @@ async function generateGatewayJson<T>(system: string, user: string): Promise<T |
 
     return extractJson<T>(content)
   } catch (error) {
-    console.error('Vercel AI Gateway text generation failed; falling back to Hugging Face.', error)
+    console.error(
+      'Vercel AI Gateway text generation failed; falling back to Hugging Face.',
+      error
+    )
     return null
   } finally {
     clearTimeout(timeout)
   }
 }
 
-export async function extractResumeIntelligence(text: string): Promise<ParsedResume> {
+export async function extractResumeIntelligence(
+  text: string,
+  options?: AiRuntimeOptions
+): Promise<ParsedResume> {
   const generated = await generateGatewayJson<ParsedResume>(
     'You extract factual resume information. Return only valid JSON and never invent details.',
-    `Return this JSON shape: {"name":"","summary":"","skills":[],"titles":[],"yearsExperience":0,"education":[],"locations":[],"noticePeriod":""}\n\nResume:\n${text.slice(0, 18_000)}`
+    `Return this JSON shape: {"name":"","summary":"","skills":[],"titles":[],"yearsExperience":0,"education":[],"locations":[],"noticePeriod":""}\n\nResume:\n${text.slice(0, 18_000)}`,
+    options
   )
 
   return generated || extractResumeIntelligenceWithHf(text)
 }
 
-export async function generateApplicationKit(input: {
-  resumeText: string
-  jobTitle: string
-  company: string
-  jobDescription: string
-}): Promise<ApplicationKit> {
+export async function generateApplicationKit(
+  input: {
+    resumeText: string
+    jobTitle: string
+    company: string
+    jobDescription: string
+  },
+  options?: AiRuntimeOptions
+): Promise<ApplicationKit> {
   const generated = await generateGatewayJson<ApplicationKit>(
     `You are a truthful senior-level ATS resume editor.
 
@@ -158,21 +181,26 @@ TARGET JOB:
 ${input.jobTitle} at ${input.company}
 
 JOB DESCRIPTION:
-${input.jobDescription.slice(0, 14_000)}`
+${input.jobDescription.slice(0, 14_000)}`,
+    options
   )
 
   return generated || generateApplicationKitWithHf(input)
 }
 
-export async function generateProfileSuggestions(input: {
-  resumeText: string
-  recentJobs: string
-}) {
+export async function generateProfileSuggestions(
+  input: {
+    resumeText: string
+    recentJobs: string
+  },
+  options?: AiRuntimeOptions
+) {
   const generated = await generateGatewayJson<{
     suggestions: Array<{ type: string; content: string }>
   }>(
     'You suggest truthful LinkedIn and Naukri profile improvements. Return only JSON. Never invent experience.',
-    `Return {"suggestions":[{"type":"linkedin_headline","content":"..."},{"type":"linkedin_about","content":"..."},{"type":"naukri_keywords","content":"..."}]}. Base suggestions on the resume and recurring keywords in recent matched jobs.\n\nRESUME:\n${input.resumeText.slice(0, 12_000)}\n\nRECENT JOB TEXT:\n${input.recentJobs.slice(0, 10_000)}`
+    `Return {"suggestions":[{"type":"linkedin_headline","content":"..."},{"type":"linkedin_about","content":"..."},{"type":"naukri_keywords","content":"..."}]}. Base suggestions on the resume and recurring keywords in recent matched jobs.\n\nRESUME:\n${input.resumeText.slice(0, 12_000)}\n\nRECENT JOB TEXT:\n${input.recentJobs.slice(0, 10_000)}`,
+    options
   )
 
   return generated || generateProfileSuggestionsWithHf(input)
