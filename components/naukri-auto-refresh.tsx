@@ -28,7 +28,7 @@ function statusLabel(status?: string) {
 }
 
 function formatDate(value: string | null | undefined) {
-  if (!value) return 'No profile change yet'
+  if (!value) return 'No Naukri change yet'
   return new Date(value).toLocaleString('en-IN', {
     dateStyle: 'medium',
     timeStyle: 'short'
@@ -75,8 +75,8 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
     setShowConnect(false)
     setMessage(
       data.syncOk
-        ? data.syncMessage || 'Naukri connected and profile checked successfully.'
-        : data.syncError || 'Connection saved. Naukri needs attention before the first automatic tune-up.'
+        ? data.syncMessage || 'Naukri connected and aligned with your Career Profile.'
+        : data.syncError || 'Connection saved. Naukri needs attention before automatic profile sync can run.'
     )
     router.refresh()
   }
@@ -89,7 +89,7 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
     setBusy(null)
 
     if (!response.ok) {
-      setMessage(data.error || 'Naukri profile tune-up failed.')
+      setMessage(data.error || 'Naukri profile sync failed.')
       router.refresh()
       return
     }
@@ -111,11 +111,11 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
     setBusy(null)
 
     if (!response.ok) {
-      setMessage(data.error || 'Could not update Naukri Auto Tune-up.')
+      setMessage(data.error || 'Could not update Naukri Profile Sync.')
       return
     }
 
-    setMessage(connection.enabled ? 'Daily Naukri tune-up paused.' : 'Daily Naukri tune-up enabled.')
+    setMessage(connection.enabled ? 'Automatic Naukri profile sync paused.' : 'Automatic Naukri profile sync enabled.')
     router.refresh()
   }
 
@@ -145,20 +145,20 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-xs font-black uppercase tracking-[.15em] text-blue-600">Naukri Auto Tune-up</p>
+            <p className="text-xs font-black uppercase tracking-[.15em] text-blue-600">Naukri Profile Sync</p>
             <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
               {statusLabel(connection?.status)}
             </span>
           </div>
-          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Keep your Naukri profile aligned with JobPilot</h2>
+          <h2 className="mt-2 text-xl font-black tracking-tight text-slate-950">Mirror genuine Career Profile changes to Naukri</h2>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Every day at 9:00 AM IST, JobPilot checks your Naukri resume headline and key skills against your verified JobPilot profile. It updates only genuine differences supported by your resume. It does not re-upload the resume, touch LinkedIn, or make fake punctuation changes just to create activity.
+            When you add or remove a skill, edit your JobPilot headline, or change your professional summary, JobPilot compares the desired profile with Naukri and writes only the real delta. A resume upload by itself is not used as a fake profile-refresh event.
           </p>
         </div>
 
         {connection && (
           <div className="min-w-44 rounded-2xl bg-slate-50 px-4 py-3 text-xs">
-            <p className="font-bold text-slate-800">Last real profile change</p>
+            <p className="font-bold text-slate-800">Last real Naukri change</p>
             <p className="mt-1 text-slate-500">{formatDate(connection.lastSyncAt)}</p>
           </div>
         )}
@@ -166,26 +166,26 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
 
       <div className="mt-5 grid gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-          <p className="text-xs font-black uppercase tracking-[.12em] text-slate-400">Headline</p>
-          <p className="mt-2 text-sm font-semibold text-slate-700">Keeps your Naukri resume headline aligned with your JobPilot Career Profile.</p>
-        </div>
-        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
           <p className="text-xs font-black uppercase tracking-[.12em] text-slate-400">Key skills</p>
-          <p className="mt-2 text-sm font-semibold text-slate-700">Adds or removes only skills already supported by the resume stored in JobPilot.</p>
+          <p className="mt-2 text-sm font-semibold text-slate-700">Adding or removing a skill in JobPilot changes the desired Naukri Key Skills set.</p>
         </div>
         <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-          <p className="text-xs font-black uppercase tracking-[.12em] text-slate-400">No artificial edits</p>
-          <p className="mt-2 text-sm font-semibold text-slate-700">If everything already matches, JobPilot skips the write instead of toggling a dot or other meaningless text.</p>
+          <p className="text-xs font-black uppercase tracking-[.12em] text-slate-400">Headline & summary</p>
+          <p className="mt-2 text-sm font-semibold text-slate-700">Only user-verified Career Profile text is mirrored when it genuinely differs.</p>
+        </div>
+        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+          <p className="text-xs font-black uppercase tracking-[.12em] text-slate-400">No artificial activity</p>
+          <p className="mt-2 text-sm font-semibold text-slate-700">No punctuation toggles, scheduled fake edits, or re-uploads just to manufacture freshness.</p>
         </div>
       </div>
 
       {connection && !showConnect && (
         <div className="mt-5 flex flex-wrap gap-2">
           <button className="btn-primary" type="button" onClick={syncNow} disabled={busy !== null}>
-            {busy === 'sync' ? 'Checking…' : 'Tune up Naukri now'}
+            {busy === 'sync' ? 'Checking…' : 'Sync Career Profile now'}
           </button>
           <button className="btn-secondary" type="button" onClick={toggle} disabled={busy !== null}>
-            {busy === 'toggle' ? 'Saving…' : connection.enabled ? 'Pause daily tune-up' : 'Enable daily tune-up'}
+            {busy === 'toggle' ? 'Saving…' : connection.enabled ? 'Pause automatic sync' : 'Enable automatic sync'}
           </button>
           <button className="btn-secondary" type="button" onClick={() => setShowConnect(true)} disabled={busy !== null}>
             Reconnect
@@ -201,65 +201,31 @@ export function NaukriAutoRefresh({ connection }: { connection: NaukriConnection
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="text-sm font-bold text-slate-700">
               Naukri email / username
-              <input
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2"
-                type="text"
-                autoComplete="username"
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="you@example.com"
-              />
+              <input className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2" type="text" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} placeholder="you@example.com" />
             </label>
             <label className="text-sm font-bold text-slate-700">
               Naukri password
-              <input
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Your Naukri password"
-              />
+              <input className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Your Naukri password" />
             </label>
           </div>
 
           <label className="mt-4 block text-sm font-bold text-slate-700">
             Naukri profile ID <span className="font-medium text-slate-400">(optional — JobPilot will try to detect it)</span>
-            <input
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2"
-              type="text"
-              value={profileId}
-              onChange={(event) => setProfileId(event.target.value)}
-              placeholder="Only enter this if auto-detection fails"
-            />
+            <input className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-3 font-medium outline-none ring-indigo-500 transition focus:ring-2" type="text" value={profileId} onChange={(event) => setProfileId(event.target.value)} placeholder="Only enter this if auto-detection fails" />
           </label>
 
           <label className="mt-4 flex items-start gap-3 rounded-xl bg-white p-3 text-xs leading-5 text-slate-600">
-            <input
-              className="mt-1"
-              type="checkbox"
-              checked={consent}
-              onChange={(event) => setConsent(event.target.checked)}
-            />
+            <input className="mt-1" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
             <span>
-              I want JobPilot to use an unofficial Naukri integration to check and update my own resume headline and key skills once daily. I understand Naukri can change its login/profile flow and that CAPTCHA or MFA may require me to reconnect.
+              I want JobPilot to use an unofficial Naukri integration to read my profile and mirror genuine changes I make to my JobPilot Career Profile. I understand Naukri can change its login/profile flow and CAPTCHA or MFA may require me to reconnect.
             </span>
           </label>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              className="btn-primary"
-              type="button"
-              disabled={busy !== null || !username || !password || !consent}
-              onClick={connect}
-            >
+            <button className="btn-primary" type="button" disabled={busy !== null || !username || !password || !consent} onClick={connect}>
               {busy === 'connect' ? 'Connecting & testing…' : 'Connect & test Naukri'}
             </button>
-            {connection && (
-              <button className="btn-secondary" type="button" onClick={() => setShowConnect(false)} disabled={busy !== null}>
-                Cancel
-              </button>
-            )}
+            {connection && <button className="btn-secondary" type="button" onClick={() => setShowConnect(false)} disabled={busy !== null}>Cancel</button>}
           </div>
         </div>
       )}
